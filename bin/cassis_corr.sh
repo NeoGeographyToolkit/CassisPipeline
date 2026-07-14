@@ -3,16 +3,15 @@
 # Warps two DEMs to a COMMON grid (taken from <ref_ctx> proj+extent) at <res> m with
 # cubicspline, hillshades each with GDAL (-multidirectional -compute_edges -alt 15),
 # then parallel_stereo --correlator-mode (asp_mgm, corr-kernel 9 9, subpixel 9) ->
-# <out_dir>/run-F.tif (H/V/validity = the warped-DEM -> ref-CTX disparity, i.e. the
-# "post-vN" correlation that feeds the next iteration's GCP). Reused for v10 (9m,25),
-# v11 (4.5m,50) and for post-vN diagnostics. Runs on pfe (ASP at BinaryBuilder).
+# <out_dir>/run-F.tif (H/V/validity = the input-DEM -> ref-CTX disparity). This
+# disparity feeds the ground control point generation and is also used to measure
+# the horizontal registration of a DEM to the CTX reference.
 # Usage: cassis_corr.sh <in_dem> <ref_ctx> <res> <corr_search> <out_dir>
 umask 022
 set -e
 in=${1:?in_dem}; ref=${2:?ref_ctx}; res=${3:?res}; S=${4:?corr_search}; out=${5:?out_dir}
 alt=${6:-15}   # OPTIONAL (shared script; other callers omit it). Default 15. My driver passes it explicitly.
-ASP=$HOME/projects/BinaryBuilder/StereoPipeline
-export PATH=$ASP/bin:$PATH PROJ_DATA=$ASP/share/proj PROJ_LIB=$ASP/share/proj
+# ASP/ISIS tools on PATH and environment are set up by the caller. See the README.
 mkdir -p $out
 echo "cassis_corr: in=$in ref=$ref res=$res search=$S out=$out"
 # --- Co-grid CTX + the CaSSIS DEM on ONE grid, CROPPED to the CaSSIS footprint (shared box). ---
@@ -72,9 +71,8 @@ echo "CORR_DONE -> $out/run-F.tif"
 # MASK that generic GDAL ignores, so invalid (uncorrelated) pixels read as 0 and pollute the
 # dd-H/dd-V stats - a mostly-invalid flat scene then looks like ~0 shift, hiding the real one.
 # disparitydebug --raw writes Float32 H/V with real nodata (-1e6). ALWAYS stat THESE two files,
-# never run-F.tif. disparitydebug needs ISIS initialized (our build is not a self-contained
-# release wrapper), so point ISISROOT at the asp_deps env (it holds IsisPreferences).
-for e in $HOME/*conda3/envs/asp_deps; do [ -f "$e/IsisPreferences" ] && export ISISROOT="$e"; done
+# never run-F.tif. disparitydebug needs ISIS initialized (ISISROOT set), which the
+# caller's environment provides (see the README).
 if disparitydebug --raw $out/run-F.tif --output-prefix $out/run-F > $out/disparitydebug.log 2>&1; then
   echo "DISP_BANDS -> $out/run-F-H.tif (dd-H), $out/run-F-V.tif (dd-V)  [analyze THESE, not run-F.tif]"
 else

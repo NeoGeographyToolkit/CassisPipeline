@@ -11,12 +11,8 @@
 # dir, the output dir, and the datum. No specifics hardcoded.
 # Usage: refit_transverse.sh <cam_dir> <img_dir> <out_dir> [datum]
 set -e
-CONDA=$HOME/anaconda3; [ -x "$HOME/miniconda3/bin/conda" ] && CONDA=$HOME/miniconda3
-eval "$("$CONDA/bin/conda" shell.bash hook)"; conda activate asp_deps
-export ISISROOT=$CONDA/envs/asp_deps
-export ISISDATA=$HOME/projects/isis3data
-export PATH=$HOME/projects/StereoPipeline/install/bin:$CONDA/envs/asp_deps/bin:$ISISROOT/bin:$PATH
-cd ~/projects/cassis_asp
+# ASP/ISIS tools on PATH and environment (ISIS kernels) are set up by the caller.
+# Run this from your work directory. See the repository README.
 cam_dir=$1; img_dir=$2; out_dir=$3; datum=${4:-D_MARS}
 mkdir -p "$out_dir"
 summary="$out_dir/camtest_summary.txt"

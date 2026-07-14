@@ -47,8 +47,8 @@ stereo, blending, and registration to CTX. This is the compute-heavy stage and
 is meant for a cluster (for example a PBS/qsub batch node).
 
 Because Tier 1 and 2 need kernels and network while Tier 3 is heavy compute, a
-full from-scratch run is naturally **two invocations**: the prep stages on a
-kernel-equipped workstation, then the heavy stages as a batch job.
+from-scratch run splits in two: the preparation on a kernel-equipped workstation
+(currently run by hand, see below), then the heavy stages as a batch job.
 
 ### Stages
 
@@ -102,77 +102,135 @@ directory**, never in this repository. This repo ships code only.
 
 ## Environment
 
-> Draft. The exact env contract is being finalized (the scripts still set some
-> paths internally). The recommended setup is below.
+The pipeline scripts do not set up any environment themselves, and do not run
+`conda activate` or hardcode any paths (those differ from machine to machine).
+They assume the ASP and ISIS tools are on your PATH and that the projection and
+ISIS environment (`PROJ_DATA`, `GDAL_DATA`, `ISISROOT`) is already in place. Set
+this up in one of two ways.
 
-Activate a conda environment that provides ASP together with its GDAL, PROJ, and
-ISIS stack (for example the conda-forge `stereo-pipeline` package). Activation
-sets `PROJ_DATA`, `GDAL_DATA`, and `ISISROOT` for you, so the tools can find
-`proj.db` and the projection data. Then prepend the pipeline `bin/` to your PATH:
+Recommended: activate a conda environment that provides ASP with its GDAL, PROJ,
+and ISIS stack (for example the conda-forge `stereo-pipeline` package).
+Activation sets `PROJ_DATA`, `GDAL_DATA`, and `ISISROOT` for you. Then prepend
+the pipeline `bin/` to your PATH:
 
 ```bash
 conda activate <your-asp-env>
 export PATH=/path/to/CassisPipeline/bin:$PATH
 ```
 
-If instead you use a packaged ASP tarball (not conda), point `PROJ_DATA` and
-`GDAL_DATA` at its `share/proj` and set `ISISROOT` to its root yourself, then put
-both the pipeline `bin/` and the ASP `bin/` on your PATH.
+Alternatively, use a packaged ASP release. Its tool wrappers set `ISISROOT` and
+the projection data themselves, so you only add the ASP `bin/` and the pipeline
+`bin/` to your PATH:
+
+```bash
+export PATH=/path/to/CassisPipeline/bin:/path/to/StereoPipeline/bin:$PATH
+```
 
 A `proj.db` not found error is the usual sign that the environment was not
-activated (or a stale `PROJ_DATA` is set).
+activated, or that a stale `PROJ_DATA` points at a location that no longer
+exists.
 
 ## Configuration
 
-The pipeline is driven by two configuration files that live in your work
-directory, not in this repository. Example copies are in `config/`.
+This is the part that needs the most care. Because the scripts are generic, the
+burden is on you to tell the pipeline where your data is. That is done entirely
+through two configuration files. They live in your **work directory**, not in
+this repository. Example copies are in `config/`.
 
 - `cassis_recipe.conf` holds the shared recipe constants that are the same for
-  every site (grid resolutions, bundle-adjustment uncertainties, the frozen lens
-  coefficients, dense-match settings). You normally do not edit this.
-- `cassis_site_<nick>.conf` holds the per-site data paths (the pair directory,
+  every site: grid resolutions, bundle-adjustment uncertainties, the frozen lens
+  coefficients, and dense-match settings. You normally do not edit this.
+- `cassis_site_<nick>.conf` holds the per-site data paths: the pair directory,
   the CTX reference DEM and its blurred drape, the aligned linescan DEM, the
-  start camera directory, and the left and right look ids).
+  start camera directory, and the left and right look identifiers.
 
-**Setting up a work directory (spelled out, review each step):**
+The work directory is the anchor for everything. You run the pipeline from it,
+and it is passed as the last argument to every script, which changes into it
+before doing any work.
 
-1. Choose a work directory. All data paths in the site config are relative to it.
+**Paths in the config.** Every path in the site config is interpreted relative to
+the work directory, unless it is written as an absolute path. So for each entry
+you have two choices:
+
+- a path relative to the work directory (for example
+  `oxia_planum/MY34_003806_019/...`), if your data lives under the work
+  directory, or
+- an absolute path (for example `/data/cassis/oxia1/...`), if it lives elsewhere.
+
+Both work. What you must not do is leave the example values in place, since they
+point at data that is not yours.
+
+**Setting up a work directory (review each step):**
+
+1. Choose a work directory. You will run the pipeline from here.
 2. Copy `config/cassis_recipe.conf` and one `config/cassis_site_<nick>.conf` into
    the work directory.
-3. **Edit every path in the site config to point at your data.** These are
-   literal paths relative to the work directory. Do not leave the example values.
-   Inspect each one and confirm the file it names actually exists. A wrong or
-   stale path here fails late and wastes a batch job.
+3. Edit every path in the site config to point at your data, either relative to
+   the work directory or absolute. Inspect each one and confirm the file it names
+   actually exists. A wrong or stale path here fails late and can waste a long
+   batch job.
 4. Leave `cassis_recipe.conf` as shipped unless you have a specific reason to
-   change a constant. Any change should carry a one-line rationale comment.
-5. Set up your environment and PATH (see the Environment section above), then run
-   from the work directory. The full sequence, repeated here so it is self-contained:
+   change a constant, in which case add a one-line rationale comment. The frozen
+   lens coefficients are a global CaSSIS instrument constant, reused as is for
+   every site; you do not refit them per site.
+5. Set up your environment (see above), then run from the work directory.
 
-   ```bash
-   conda activate <your-asp-env>
-   export PATH=/path/to/CassisPipeline/bin:/path/to/StereoPipeline/bin:$PATH
-   cd /path/to/workdir
-   cassis_process.sh cassis_site_<nick>.conf <fromStage> <toStage> <tagBase> <workdir>
-   ```
-
-(How exactly the config is copied and how each path is verified is worth a
-careful worked example. tbd, to be filled in with the Jezero reference run.)
+A fully worked example, with the Jezero reference data, is planned (tbd).
 
 ## Running the pipeline
 
-A full from-scratch run is two invocations, prep then heavy:
+The pipeline runs in numbered stages. Stages 0 to 4 are preparation (build the
+CTX reference, the linescan DEM, the frame cameras, and the distortion refit).
+Stages 5 to 7 are the compute-heavy part (transplant cameras, dense matches,
+bundle adjustment, stereo, blending, registration). The delivered DEM is the
+stage-7 result.
+
+The supported path today is to start from a prepared work directory (for example
+the reference dataset, once available) and run the heavy stages. Set up the
+environment, then from the work directory:
 
 ```bash
-# On a workstation with ISIS and CaSSIS kernels (prep, stages 0 to 4):
-cassis_process.sh cassis_site_<nick>.conf 0 4 <tagBase> <workdir>
+conda activate <your-asp-env>
+export PATH=/path/to/CassisPipeline/bin:$PATH
+cd /path/to/workdir
 
-# On a compute node (heavy, stages 5 to 7):
-cassis_process.sh cassis_site_<nick>.conf 5 7 <tagBase> <workdir>
+# heavy stages (5 to 7):
+cassis_process.sh cassis_site_<nick>.conf 5 7 cpass /path/to/workdir
 ```
 
-If a site's prep outputs are already on disk, run only the heavy stages. Each
-stage skips cheaply if its output already exists, so a failure at stage k
-resumes at stage k, not from the beginning.
+Each stage skips cheaply if its output already exists, so a failure at stage k
+resumes at stage k. If dense matches are not present, start at stage 6, which
+generates them.
+
+On a PBS/qsub cluster (for example NASA Pleiades), submit the heavy stages as a
+batch job. Adapt the queue, account, node model, core count, and walltime to your
+system:
+
+```bash
+conda activate <your-asp-env>
+qsub -V -N cassis -l select=1:ncpus=28 -l walltime=6:00:00 -j oe -o /dev/null -- \
+  /path/to/CassisPipeline/bin/cassis_process.sh \
+  cassis_site_<nick>.conf 5 7 cpass /path/to/workdir
+```
+
+The `-V` flag is important: by default PBS starts the job with a clean
+environment, so the tools you activated would not be found on the compute node.
+`-V` exports your current environment (PATH, `PROJ_DATA`, `ISISROOT`, and the
+rest) to the job. Alternatively, set the environment up in a job prologue or your
+shell profile on the compute node. The worker itself changes into the work
+directory and writes its own log there.
+
+### Preparation stages (from scratch)
+
+Running from scratch, with no prepared work directory, means building the
+preparation inputs (stages 0 to 4) on a workstation that has ISIS and the CaSSIS
+SPICE kernels. This part is not yet automated end to end. Running
+`cassis_process.sh <conf> 0 4 ...` prints the sequence of preparation steps and
+the script for each, but does not execute them; run those prep scripts
+(`cassis_ctx_build.sh`, `cassis_linescan_dem.sh`, `align_ls_to_ctx.sh`,
+`linescan2babyframes.sh`, `refit_transverse.sh`) by hand for now. Once their
+outputs are on disk and the site config points at them, the heavy stages above
+run as shown.
 
 The final DEM is written under the pair directory in the work directory. It is
 compared to the CTX reference with `geodiff` for the vertical difference and by

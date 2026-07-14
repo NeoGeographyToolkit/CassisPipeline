@@ -12,8 +12,7 @@ set -e
 warped=${1:?warped_dem}; ref=${2:?ref_dem}; disp=${3:?disparity}; img=${4:?image_list}
 cams=${5:?camera_list}; mprefix=${6:?match_prefix}; maxdisp=${7:?max_disp}; gcp=${8:?gcp_out}
 sigma=${9:?gcp_sigma}; maxgcp=${10:?max_gcp}
-ASP=$HOME/projects/BinaryBuilder/StereoPipeline
-export PATH=$ASP/bin:$PATH PROJ_DATA=$ASP/share/proj PROJ_LIB=$ASP/share/proj
+# ASP/ISIS tools on PATH and environment are set up by the caller. See the README.
 mkdir -p "$(dirname "$gcp")"
 echo "dem2gcp: $(which dem2gcp)"
 dem2gcp \

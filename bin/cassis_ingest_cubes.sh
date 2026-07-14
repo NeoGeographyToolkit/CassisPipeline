@@ -1,7 +1,6 @@
 #!/bin/bash
 # cassis_ingest_cubes.sh - GENERIC CaSSIS framelet -> ISIS cube ingest (NO kernels).
-# Canonical, parametrized replacement for the per-site ingest_jezero.sh / oxia_ingest.sh. Portable
-# conda (Mac anaconda3 / l1 miniconda3). For each look dir under the site data root whose .dat count
+# Parametrized by the site data root. For each look dir under it whose .dat count
 # == .xml count: tgocassis2isis on each calibrated framelet .xml -> .cub, then inject
 # SpacecraftClockStartCount from the XML hex-ASCII exposuretimestamp (PSA-export framelets lack the
 # clock keyword camera init needs; OBSOLETED by ISIS PR 6079 once that reaches the build). Idempotent
@@ -12,12 +11,8 @@ SITEDATA=${1:-data/MY34_004756_354_1}
 LOCK=/tmp/cassis_ingest_$(echo "$SITEDATA" | tr '/' '_').lock
 mkdir "$LOCK" 2>/dev/null || { echo "another ingest running (lock $LOCK); exit"; exit 0; }
 trap 'rmdir "$LOCK" 2>/dev/null' EXIT
-CONDA=$HOME/anaconda3; [ -x "$HOME/miniconda3/bin/conda" ] && CONDA=$HOME/miniconda3
-eval "$("$CONDA/bin/conda" shell.bash hook)"; conda activate asp_deps
-export ISISROOT=$CONDA/envs/asp_deps
-export ISISDATA=$HOME/projects/isis3data
-export PATH=$HOME/projects/StereoPipeline/install/bin:$ISISROOT/bin:$PATH
-cd "$HOME/projects/cassis_asp" || exit 1
+# ASP/ISIS tools on PATH and environment (ISIS kernels) are set up by the caller.
+# Run this from your work directory. See the repository README.
 for look in "$SITEDATA"/L*_*; do
   [ -d "$look" ] || continue
   nd=$(ls "$look"/*.dat 2>/dev/null | wc -l | tr -d ' ')

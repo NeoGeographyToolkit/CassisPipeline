@@ -17,8 +17,7 @@ camPosUnc=${16:?camPosUnc}; robust=${17:?robust}; gcpSigma=${18:?gcpSigma}; maxG
 maxDisp=${20:?maxDisp}; geounc=${21:?geounc}; outTag=${22:?outTag}
 tocGcpMode=${23:?tocGcpMode (no_gcp|soft_gcp)}; B=${24:?B (cd target, LAST)}
 cd "$B" || { echo "ERROR cannot cd $B"; exit 1; }
-ASP=$HOME/projects/BinaryBuilder/StereoPipeline
-export PATH=$ASP/bin:$PATH PROJ_DATA=$ASP/share/proj PROJ_LIB=$ASP/share/proj ISISROOT=$ASP
+# ASP/ISIS tools on PATH and environment are set up by the caller. See the README.
 log=$B/output_${outTag}_block.txt; exec > "$log" 2>&1
 echo "=== [cassis_block] START $(date) host=$(uname -n) outTag=$outTag (builds on $inImgList) ==="
 echo "  inGcp=$inGcp mapprojRes=$mapprojRes demRes=$demRes corrRes=$corrRes htUncTic=$htUncTic htUncToc=$htUncToc"
@@ -33,7 +32,7 @@ ticImg=$pairDir/frame/${outTag}_tic/run-image_list.txt; ticCam=$pairDir/frame/${
 [ -s "$ticImg" ] && [ -s "$ticCam" ] || { echo "STAGE_FAIL tic no lists"; exit 1; }
 
 # === [2] TOC: BA + htdem from the tic cams - vertical, keeps horizontal ===
-# TOC gcp mode (project C): default no_gcp (pure vertical). soft_gcp reuses the INPUT gcp at its baked
+# TOC gcp mode: default no_gcp (pure vertical). soft_gcp reuses the INPUT gcp at its baked
 # sigma with fixgcp=no (a SOFT anchor, not fixed), to pull under-constrained END framelets toward CTX
 # without disturbing the well-behaved mid-strip. Used for ox1 where the strip ends drift; a per-site
 # choice, off by default so every other site is byte-identical to before.

@@ -10,12 +10,10 @@
 #   Arg: $1 = site data root (default data/MY34_004756_354_1); looks are its L*_* subdirs.
 ISIS_ENV=${ISIS_ENV:-ale_cassis}
 SITE=${1:-data/MY34_004756_354_1}
-ROOT=${ROOT:-$HOME/projects/cassis_asp}
+ROOT=${ROOT:-$PWD}
 JOBS=${JOBS:-10}
-CONDA=$HOME/anaconda3; [ -x "$HOME/miniconda3/bin/conda" ] && CONDA=$HOME/miniconda3
-eval "$("$CONDA/bin/conda" shell.bash hook)"; conda activate "$ISIS_ENV"
-export ISISDATA=$HOME/projects/isis3data
-export ALESPICEROOT=$ISISDATA
+# Activate the ALE environment with CaSSIS support (built from source) and set up
+# ISIS/SPICE (ISISDATA, ALESPICEROOT) before running. See the repository README.
 cd "$ROOT" || exit 1
 tag=$(echo "$SITE" | tr '/' '_'); TM=/tmp/cassis_tm_$tag; mkdir -p "$TM"
 

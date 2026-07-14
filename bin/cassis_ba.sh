@@ -16,14 +16,7 @@ pairDir=${1:?pairDir}; outTag=${2:?outTag}; imgList=${3:?imgList}; camList=${4:?
 refdem=${5:?refdem}; matchpfx=${6:?matchpfx}; htUnc=${7:?htUnc}; camPosUnc=${8:?camPosUnc}
 gcp=${9:?gcp (.gcp path, or "no_gcp")}; fixgcp=${10:?fixgcp (yes|no)}; robust=${11:?robust}
 intrFloat=${12:?intrFloat (yes_intr_float|no_intr_float)}; B=${13:?B (cd target, LAST)}
-if [ -x "$HOME/projects/BinaryBuilder/StereoPipeline/bin/bundle_adjust" ]; then
-  export PATH=$HOME/projects/BinaryBuilder/StereoPipeline/bin:$PATH
-  ASP=$HOME/projects/BinaryBuilder/StereoPipeline; export ISISROOT=$ASP PROJ_DATA=$ASP/share/proj
-else
-  eval "$($HOME/anaconda3/bin/conda shell.bash hook)"; conda activate asp_deps
-  export ISISROOT=$HOME/anaconda3/envs/asp_deps
-  export PATH=$HOME/projects/StereoPipeline/install/bin:$ISISROOT/bin:$PATH
-fi
+# ASP/ISIS tools on PATH and environment are set up by the caller. See the README.
 cd "$B" || { echo "ERROR cannot cd $B"; exit 1; }
 out=$pairDir/frame/$outTag; mkdir -p "$out"
 log=$B/output_${outTag}.txt; exec > "$log" 2>&1

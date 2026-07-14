@@ -3,11 +3,8 @@
 # CTX-aligned linescan states.
 # Usage: cassis_align_cams.sh <oxia1|oxia2|jezero>
 set -e
-CONDA=$HOME/anaconda3; [ -x "$HOME/miniconda3/bin/conda" ] && CONDA=$HOME/miniconda3
-eval "$("$CONDA/bin/conda" shell.bash hook)"; conda activate asp_deps
-export ISISROOT=$CONDA/envs/asp_deps ISISDATA=$HOME/projects/isis3data ALESPICEROOT=$HOME/projects/isis3data
-export PATH=$HOME/projects/StereoPipeline/install/bin:$CONDA/envs/asp_deps/bin:$ISISROOT/bin:$PATH
-cd ~/projects/cassis_asp
+# ASP/ISIS tools on PATH and environment (ISIS kernels) are set up by the caller.
+# Run this from your work directory. See the repository README.
 # GENERIC new-site path: if W/L/R/T are passed as env vars, use them and SKIP the case block.
 if [ -n "$W" ] && [ -n "$L" ] && [ -n "$R" ] && [ -n "$T" ]; then
   :

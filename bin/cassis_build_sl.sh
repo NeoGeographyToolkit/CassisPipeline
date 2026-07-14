@@ -5,7 +5,7 @@
 # (no run-dir indirection).
 #   Args: $1 pairDir  $2 dataDir  $3 sidL  $4 sidR  $5 camDir(full-name transverse cams, frame/sl_refit_full)
 set -e
-cd ~/projects/cassis_asp
+# Run this from your work directory. See the repository README.
 P=$1; DATA=$2; sidL=$3; sidR=$4; CAM=$5
 [ -n "$CAM" ] || { echo "usage: cassis_build_sl.sh pairDir dataDir sidL sidR camDir"; exit 1; }
 sl=$P/frame/sl; mkdir -p "$sl"

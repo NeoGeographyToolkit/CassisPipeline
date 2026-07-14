@@ -9,11 +9,9 @@
 # only) -> <site>/frame/sl_refit_full/<fullstem>.json. Mac dev build (loads CASSIS type 9; pfe cannot).  [2026-07-09: OBSOLETE - pfe NOW loads CASSIS type 9]
 set +e; umask 022
 source "$(ls -d $HOME/*conda3/etc/profile.d/conda.sh 2>/dev/null|head -1)" 2>/dev/null
-conda activate asp_deps 2>/dev/null
-export ISISROOT=$HOME/anaconda3/envs/asp_deps
-export ISISDATA=$HOME/projects/isis3data
-export PATH=$HOME/projects/StereoPipeline/install/bin:$ISISROOT/bin:$PATH
-W=$HOME/projects/cassis_asp; cd "$W" || exit 1
+# ASP/ISIS tools on PATH and environment (ISIS kernels) are set up by the caller.
+# Run this from your work directory. See the repository README.
+W=$PWD
 log=$W/output_refit_fullname.txt; exec > "$log" 2>&1
 echo "=== [refit_fullname] START $(date) host=$(uname -n) ==="
 

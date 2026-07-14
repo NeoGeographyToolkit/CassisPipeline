@@ -17,8 +17,7 @@ corrRes=${11:?corrRes (18)}; corrSearch=${12:?corrSearch}; htUncTic=${13:?htUncT
 camPosUnc=${15:?camPosUnc}; robust=${16:?robust}; gcpSigma=${17:?gcpSigma}; maxGcp=${18:?maxGcp}
 maxDisp=${19:?maxDisp}; geounc=${20:?geounc}; outTag=${21:?outTag}; B=${22:?B (cd target, LAST)}
 cd "$B" || { echo "ERROR cannot cd $B"; exit 1; }
-ASP=$HOME/projects/BinaryBuilder/StereoPipeline
-export PATH=$ASP/bin:$PATH PROJ_DATA=$ASP/share/proj PROJ_LIB=$ASP/share/proj ISISROOT=$ASP
+# ASP/ISIS tools on PATH and environment are set up by the caller. See the README.
 log=$B/output_${outTag}_pass.txt; exec > "$log" 2>&1
 echo "=== [cassis_pass] START $(date) host=$(uname -n) outTag=$outTag ==="
 echo "  pairDir=$pairDir startCamDir=$startCamDir linescanDEM=$linescanDEM"

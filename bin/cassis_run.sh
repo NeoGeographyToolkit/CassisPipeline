@@ -6,7 +6,7 @@
 # every worker's output_<tag>_*.txt is PER-SITE automatically. cassis_process.sh delegates stages
 # 7-8 here; it can also be run standalone for a single pass.
 # Usage:  cassis_run.sh <site.conf> <pass1|pass2> <tagBase> <B>
-#   e.g.  cassis_run.sh cassis_site_jezero.conf pass1 cpass /home6/oalexan1/projects/cassis_asp
+#   e.g.  cassis_run.sh cassis_site_jezero.conf pass1 cpass /path/to/workdir
 #   -> nick=jezero, pass1 outTag=jezero_cpass1 (frame/jezero_cpass1*, frame/jezero_cpass1_stereo);
 #      pass2 outTag=jezero_cpass2 builds on frame/jezero_cpass1/. ALL new runs are geounc=0. The
 #      OLD on-disk frame/pass1_stereo,pass2_stereo were made EARLIER at geounc=50; we do NOT re-run
@@ -14,9 +14,8 @@
 set +e; umask 022
 cfg=${1:?site config (cassis_site_<nick>.conf)}; stage=${2:?stage pass1|pass2}
 tagBase=${3:?outTag base e.g. cpass}; B=${4:?work base LAST}
-ASP=$HOME/projects/BinaryBuilder/StereoPipeline
-export PATH=$ASP/bin:$PATH PROJ_DATA=$ASP/share/proj PROJ_LIB=$ASP/share/proj ISISROOT=$ASP
-export GCOV_PREFIX=/tmp/gcov_$$ GCOV_PREFIX_STRIP=99; mkdir -p "$GCOV_PREFIX"
+# The ASP and ISIS tools must be on PATH and the environment set up beforehand.
+# See the repository README, Environment section.
 cd "$B" || { echo "ERROR cannot cd $B"; exit 1; }
 
 nick=$(basename "$cfg" .conf | sed 's/^cassis_site_//')
@@ -25,7 +24,7 @@ nick=$(basename "$cfg" .conf | sed 's/^cassis_site_//')
 source "$B/cassis_recipe.conf"
 source "$B/$cfg"
 matchpfx=${matchpfx:-$pairDir/frame/dense/matches/run-disp}   # uniform; a config MAY override
-pass2TocGcp=${pass2TocGcp:-no_gcp}   # project C: pass2 TOC gcp mode (no_gcp default; soft_gcp per site)
+pass2TocGcp=${pass2TocGcp:-no_gcp}   # pass2 TOC gcp mode (no_gcp default; soft_gcp per site)
 
 # validate every var is set (no silent default) + inputs exist
 for v in pairDir refdem drape linescanDEM startCamDir Llook Rlook matchpfx \

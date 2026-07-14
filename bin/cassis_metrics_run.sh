@@ -5,9 +5,8 @@
 # Args (B LAST): <cfg> <fromStage> <toStage> <tagBase> <B>
 set +e; umask 022
 cfg=${1:?cfg}; from=${2:?fromStage}; to=${3:?toStage}; tagBase=${4:?tagBase}; B=${5:?B (LAST)}
-ASP=$HOME/projects/BinaryBuilder/StereoPipeline
-export PATH=$ASP/bin:$PATH PROJ_DATA=$ASP/share/proj PROJ_LIB=$ASP/share/proj ISISROOT=$ASP
-export GCOV_PREFIX=/tmp/gcov_$$ GCOV_PREFIX_STRIP=99; mkdir -p "$GCOV_PREFIX"
+# The ASP and ISIS tools must be on PATH and the environment set up beforehand.
+# See the repository README, Environment section.
 cd "$B" || { echo "ERROR cannot cd $B"; exit 1; }
 nick=$(basename "$cfg" .conf | sed 's/^cassis_site_//')
 mdir=$B/metrics_${nick}; mkdir -p "$mdir"

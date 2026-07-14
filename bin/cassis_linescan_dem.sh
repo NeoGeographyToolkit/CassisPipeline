@@ -16,24 +16,10 @@
 # Usage: cassis_linescan_dem.sh <oxia1|oxia2|jezero>
 set -e
 
-# --- machine-aware environment ---
-if [ -d /home6/oalexan1 ]; then            # pfe
-  umask 022
-  B=/home6/oalexan1/projects/cassis_asp
-  ASP=$HOME/projects/BinaryBuilder/StereoPipeline
-  export PATH=$ASP/bin:$PATH
-  export PROJ_LIB=$ASP/share/proj PROJ_DATA=$ASP/share/proj
-  export ISISROOT=$ASP
-  ONPFE=1
-else                                        # Mac or l1 (portable conda: anaconda3 / miniconda3)
-  CONDA=$HOME/anaconda3; [ -x "$HOME/miniconda3/bin/conda" ] && CONDA=$HOME/miniconda3
-  eval "$("$CONDA/bin/conda" shell.bash hook)"; conda activate asp_deps
-  B=$HOME/projects/cassis_asp
-  export ISISROOT=$CONDA/envs/asp_deps ISISDATA=$HOME/projects/isis3data
-  export ALESPICEROOT=$HOME/projects/isis3data
-  export PATH=$HOME/projects/StereoPipeline/install/bin:$CONDA/envs/asp_deps/bin:$ISISROOT/bin:$PATH
-  ONPFE=0
-fi
+# ASP/ISIS tools on PATH and environment (ISIS kernels) are set up by the caller.
+# Run this from your work directory. See the repository README.
+umask 022
+B=$PWD
 cd "$B"
 
 # --- per-site params (the ONLY hardcoded site facts: data, sids, workdir, coarse ctx) ---
@@ -65,7 +51,7 @@ fi
 [ -s "$coarse" ] || { echo "ERROR missing coarse ctx $coarse"; exit 1; }
 mkdir -p "$work"
 log=$B/output_linescan_${site}.txt
-[ "$ONPFE" = 1 ] && exec > "$log" 2>&1
+exec > "$log" 2>&1
 echo "START $(date) host=$(uname -n) site=$site"
 
 # --- grid + proj: SINGLE source of truth = the coarse CTX (agreement guaranteed) ---
@@ -79,15 +65,10 @@ echo "coarse=$coarse"
 echo "srs='$srs'"
 echo "grid: tr=$TR size=${NX}x${NY} te='$XMIN $YMIN $XMAX $YMAX'"
 
-# Good-citizen process caps (Mac shared box; pfe uses the node fully).
-if [ "$ONPFE" = 1 ]; then
-  [ -f "$PBS_NODEFILE" ] || { PBS_NODEFILE=$(uname -n).txt; uname -n > "$PBS_NODEFILE"; }
-  MAPCAP="--threads 16"
-  PSCAP="--nodes-list $PBS_NODEFILE --processes 8 --threads-multiprocess 4 --threads-singleprocess 16"
-else
-  MAPCAP="--processes 2 --threads 3"
-  PSCAP="--processes 2 --threads-multiprocess 3 --threads-singleprocess 6"
-fi
+# Parallel processing caps. Defaults are conservative for a shared workstation.
+# Override via the environment for a dedicated compute node (more processes/threads).
+MAPCAP=${MAPCAP:-"--processes 2 --threads 3"}
+PSCAP=${PSCAP:-"--processes 2 --threads-multiprocess 3 --threads-singleprocess 6"}
 
 # --- S1-S2: strips + linescan ISDs (regen if missing; needs raw framelets present) ---
 Ls=$work/${sidL}_strip.tif; Rs=$work/${sidR}_strip.tif

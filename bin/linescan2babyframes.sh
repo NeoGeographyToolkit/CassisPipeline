@@ -18,12 +18,8 @@
 #   state    e.g. <pairDir>/align_ctx/cams_aligned/run-run-276230221_linescan.adjusted_state.json
 #   look     L or R (just for the output dir label)
 set -e
-CONDA=$HOME/anaconda3; [ -x "$HOME/miniconda3/bin/conda" ] && CONDA=$HOME/miniconda3
-eval "$("$CONDA/bin/conda" shell.bash hook)"; conda activate asp_deps
-export ISISROOT=$CONDA/envs/asp_deps ISISDATA=$HOME/projects/isis3data
-export ALESPICEROOT=$HOME/projects/isis3data
-export PATH=$HOME/projects/StereoPipeline/install/bin:$CONDA/envs/asp_deps/bin:$ISISROOT/bin:$PATH
-cd ~/projects/cassis_asp
+# ASP/ISIS tools on PATH and environment (ISIS kernels) are set up by the caller.
+# Run this from your work directory. See the repository README.
 
 pairDir=$1; data=$2; sid=$3; state=$4; look=$5
 [ -s "$state" ] || { echo "ERROR: missing aligned linescan state $state"; exit 1; }

@@ -14,11 +14,9 @@
 set +e; umask 022
 VENDOR="$1"; LAT0="$2"; LON0="$3"; OUTDIR="$4"; TAG="$5"
 [ -n "$TAG" ] || { echo "usage: cassis_ctx_build.sh VENDOR_DTM LAT0 LON0 OUTDIR TAG"; exit 1; }
-CONDA=$HOME/anaconda3; [ -x "$HOME/miniconda3/bin/conda" ] && CONDA=$HOME/miniconda3
-eval "$("$CONDA/bin/conda" shell.bash hook)"; conda activate asp_deps
-export ISISROOT=$CONDA/envs/asp_deps
-export PATH=$HOME/projects/StereoPipeline/install/bin:$CONDA/envs/asp_deps/bin:$PATH
-W=$HOME/projects/cassis_asp; cd "$W" || exit 1
+# ASP/ISIS tools on PATH and environment are set up by the caller.
+# Run this from your work directory. See the repository README.
+W=$PWD
 [ -s "$VENDOR" ] || { echo "FATAL: vendor DTM not found: $VENDOR"; exit 1; }
 mkdir -p "$OUTDIR/dl"
 log=$W/output_ctx_build_${TAG}.txt; exec > "$log" 2>&1

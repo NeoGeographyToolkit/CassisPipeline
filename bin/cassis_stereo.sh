@@ -43,16 +43,7 @@ Rlook=${12:?Rlook required (token identifying R-look framelets)}
 num_matches_from_disp=${13:?num_matches_from_disp required (0 = DEM mode: build the DEM from existing
   match files; >0 = DENSE mode: compute the pairing and EMIT that many matches per pair, no DEM)}
 B=${14:?B required (work base, cd target, LAST)}
-# Env: pfe/athena PACKAGED build (bin only), else Mac/l1 dev+conda.
-s=StereoPipeline
-if [ -x "$HOME/projects/BinaryBuilder/$s/bin/point2dem" ]; then
-  export PATH=$HOME/projects/BinaryBuilder/$s/bin:$PATH
-  export PROJ_LIB=$HOME/projects/BinaryBuilder/$s/share/proj PROJ_DATA=$HOME/projects/BinaryBuilder/$s/share/proj
-else
-  eval "$($HOME/anaconda3/bin/conda shell.bash hook)"; conda activate asp_deps
-  export ISISROOT=$HOME/anaconda3/envs/asp_deps ISISDATA=$HOME/projects/isis3data ALESPICEROOT=$HOME/projects/isis3data
-  export PATH=$HOME/projects/$s/install/bin:$HOME/anaconda3/envs/asp_deps/bin:$ISISROOT/bin:$PATH
-fi
+# ASP/ISIS tools on PATH and environment are set up by the caller. See the README.
 cd "$B" || { echo "ERROR cannot cd $B"; exit 1; }
 out=$pairDir/frame/${tag}_stereo; mkdir -p "$out/stereo" "$out/maps"
 log=$B/output_${tag}_stereo.txt; exec > "$log" 2>&1

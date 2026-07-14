@@ -10,15 +10,8 @@
 set +e
 mode=${1:?mode (dem|lr|same)}; a=${2:?a}; b=${3:?b}; envf=${4:?envfile}
 [ -s "$envf" ] || { echo "  PAIR $a $b: no envfile $envf"; exit 0; }
-# ASP env (machine-aware), self-contained so GNU parallel needs to carry nothing.
-if [ -x "$HOME/projects/BinaryBuilder/StereoPipeline/bin/point2dem" ]; then
-  ASP=$HOME/projects/BinaryBuilder/StereoPipeline
-  export PATH=$ASP/bin:$PATH PROJ_LIB=$ASP/share/proj PROJ_DATA=$ASP/share/proj ISISROOT=$ASP
-else
-  eval "$($HOME/anaconda3/bin/conda shell.bash hook)"; conda activate asp_deps
-  export ISISROOT=$HOME/anaconda3/envs/asp_deps
-  export PATH=$HOME/projects/StereoPipeline/install/bin:$HOME/anaconda3/envs/asp_deps/bin:$ISISROOT/bin:$PATH
-fi
+# ASP/ISIS tools on PATH and environment are inherited from the caller (GNU
+# parallel carries the environment to each worker). See the README.
 source "$envf"
 T=${T:-2}
 # cap math-library threads per worker (imitate parallel_stereo's MKL guard) so K workers x T threads

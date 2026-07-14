@@ -15,10 +15,8 @@
 # Usage: align_ls_to_ctx.sh <pairDir> <L_strip> <L_tiestate> <R_strip> <R_tiestate> [tag]
 #   pairDir e.g. oxia_planum/MY34_003806_019 ; tag default "cs"
 set -e
-eval "$($HOME/anaconda3/bin/conda shell.bash hook)"; conda activate asp_deps
-export ISISROOT=$HOME/anaconda3/envs/asp_deps ISISDATA=$HOME/projects/isis3data
-export PATH=$HOME/projects/StereoPipeline/install/bin:$HOME/anaconda3/envs/asp_deps/bin:$ISISROOT/bin:$PATH
-cd ~/projects/cassis_asp
+# ASP/ISIS tools on PATH and environment (ISIS kernels) are set up by the caller.
+# Run this from your work directory. See the repository README.
 
 pairDir=$1; Ls=$2; Lstate=$3; Rs=$4; Rstate=$5; tag=${6:-cs}
 dem=$pairDir/ls_tied/stereo/dem-DEM.tif
