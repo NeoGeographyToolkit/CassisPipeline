@@ -100,6 +100,28 @@ directory**, never in this repository. This repo ships code only.
 - **Python** with numpy and GDAL, for the pairing and evaluation helpers.
 - **GNU parallel** (bundled with ASP) for the parallel pairwise stereo.
 
+## Environment
+
+> Draft. The exact env contract is being finalized (the scripts still set some
+> paths internally). The recommended setup is below.
+
+Activate a conda environment that provides ASP together with its GDAL, PROJ, and
+ISIS stack (for example the conda-forge `stereo-pipeline` package). Activation
+sets `PROJ_DATA`, `GDAL_DATA`, and `ISISROOT` for you, so the tools can find
+`proj.db` and the projection data. Then prepend the pipeline `bin/` to your PATH:
+
+```bash
+conda activate <your-asp-env>
+export PATH=/path/to/CassisPipeline/bin:$PATH
+```
+
+If instead you use a packaged ASP tarball (not conda), point `PROJ_DATA` and
+`GDAL_DATA` at its `share/proj` and set `ISISROOT` to its root yourself, then put
+both the pipeline `bin/` and the ASP `bin/` on your PATH.
+
+A `proj.db` not found error is the usual sign that the environment was not
+activated (or a stale `PROJ_DATA` is set).
+
 ## Configuration
 
 The pipeline is driven by two configuration files that live in your work
@@ -123,10 +145,11 @@ directory, not in this repository. Example copies are in `config/`.
    stale path here fails late and wastes a batch job.
 4. Leave `cassis_recipe.conf` as shipped unless you have a specific reason to
    change a constant. Any change should carry a one-line rationale comment.
-5. Put the pipeline `bin/` and the ASP `bin/` on your PATH, then run from the
-   work directory. For example:
+5. Set up your environment and PATH (see the Environment section above), then run
+   from the work directory. The full sequence, repeated here so it is self-contained:
 
    ```bash
+   conda activate <your-asp-env>
    export PATH=/path/to/CassisPipeline/bin:/path/to/StereoPipeline/bin:$PATH
    cd /path/to/workdir
    cassis_process.sh cassis_site_<nick>.conf <fromStage> <toStage> <tagBase> <workdir>
