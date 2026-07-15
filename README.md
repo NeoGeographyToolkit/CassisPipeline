@@ -87,33 +87,33 @@ directory, never in this repository. This repo ships code only.
 
 ## Environment
 
-The pipeline scripts do not set up any environment themselves, and do not run
-conda activate or hardcode any paths, since those differ from machine to machine.
-They assume the ASP and ISIS tools are on your PATH, and that the projection and
-ISIS environment (PROJ_DATA, GDAL_DATA, ISISROOT) is already in place. Set this up
-in one of two ways.
+The pipeline scripts do not set up any environment themselves, and do not
+hardcode any paths, since those differ from machine to machine. The setup has two
+parts.
 
-Recommended: install ASP from the nasa-ames-stereo-pipeline conda channel, which
-provides a CaSSIS-capable ASP with its GDAL, PROJ, ISIS, ALE, and USGSCSM stack.
-Activation sets PROJ_DATA, GDAL_DATA, and ISISROOT for you. Then prepend the
-pipeline bin to your PATH:
+First, set up a conda environment that provides GDAL and PROJ (and the numpy or
+scipy helpers). This is where the tools find proj.db and the projection data.
+Conda channel priority must be flexible, or the solve is likely to fail. This is
+the same requirement as the ASP install.
 
 ```bash
-conda create -n asp -c nasa-ames-stereo-pipeline -c usgs-astrogeology -c conda-forge stereo-pipeline
-conda activate asp
-export PATH=/path/to/CassisPipeline/bin:$PATH
+conda config --set channel_priority flexible
+conda create -n cassis-gdal -c conda-forge gdal numpy scipy
+conda activate cassis-gdal
 ```
 
-Alternatively, use a packaged ASP release. Its tool wrappers set ISISROOT and the
-projection data themselves, so you only add the ASP bin and the pipeline bin to
-your PATH:
+Second, add the ASP release and the pipeline to your PATH. ASP is a self-contained
+release, downloaded and unpacked from the releases page
+(https://github.com/NeoGeographyToolkit/StereoPipeline/releases); it is not
+installed through conda. It carries its own ISIS, ALE, and USGSCSM, including the
+CaSSIS-capable ALE and USGSCSM, and its tool wrappers set ISISROOT for you.
 
 ```bash
 export PATH=/path/to/CassisPipeline/bin:/path/to/StereoPipeline/bin:$PATH
 ```
 
-A proj.db not found error is the usual sign that the environment was not
-activated, or that a stale PROJ_DATA points at a location that no longer exists.
+A proj.db not found error is the usual sign that the conda environment providing
+GDAL is not activated.
 
 ## Configuration
 
@@ -175,8 +175,8 @@ the reference dataset, and run the heavy stages. Set up the environment, then fr
 the work directory:
 
 ```bash
-conda activate your-asp-env
-export PATH=/path/to/CassisPipeline/bin:$PATH
+conda activate cassis-gdal
+export PATH=/path/to/CassisPipeline/bin:/path/to/StereoPipeline/bin:$PATH
 cd /path/to/workdir
 
 # heavy stages (5 to 7):
@@ -197,7 +197,7 @@ batch job. Adapt the queue, account, node model, core count, and walltime to you
 system:
 
 ```bash
-conda activate your-asp-env
+conda activate cassis-gdal
 qsub -V -N cassis -l select=1:ncpus=28 -l walltime=6:00:00 -j oe -o /dev/null -- \
   /path/to/CassisPipeline/bin/cassis_process.sh \
   cassis_siteName.conf 5 7 runTag /path/to/workdir
