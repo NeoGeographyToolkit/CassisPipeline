@@ -15,14 +15,12 @@ This project is being assembled. Some pieces are not yet public:
 - **ALE CaSSIS support is not released yet.** Initial camera generation needs a
   build of USGS ALE from latest source. Stock ALE releases cannot produce CaSSIS
   camera models. See Dependencies below. (not ready)
-- **Background documentation page is not published yet.** It will live at
-  https://stereopipeline.readthedocs.io/en/latest/examples/cassis.html (not ready).
-  Until then, see the docs/examples/cassis.rst source in the ASP repository.
 
 ## Background
 
-The methodology, results, and validation against CTX are described in the ASP
-documentation page for CaSSIS (link above, not live yet).
+The methodology, results, and validation against CTX are described in the [ASP
+documentation page for
+CaSSIS](https://stereopipeline.readthedocs.io/en/latest/examples/cassis.html).
 
 ## How the pipeline is organized
 
@@ -60,7 +58,7 @@ from-scratch run splits in two: the preparation on a kernel-equipped workstation
 | 5 | apply corrected lens, refit pose | heavy |
 | 6 | dense matches | heavy |
 | 7 | bundle adjust, stereo, blend, register (pass 1) | heavy |
-| 8 | optional second pass | heavy (optional) |
+| 8 | optional refinement | heavy |
 
 The delivered product is the pass-1 DEM. The second pass mainly re-ties the
 weakly-constrained framelets at the ends of each strip and gives limited extra
