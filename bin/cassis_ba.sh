@@ -2,7 +2,7 @@
 # cassis_ba.sh - UNIVERSAL joint BA (the bundle step of one tic/toc stage). Distortion is FROZEN
 # by default; it can OPTIONALLY be floated (distortion-only, shared across all framelets) via the intrFloat
 # arg - the Jezero/Oxia jzexp1b recipe. FULLY PARAMETERIZED, NO hardcoded cameras or site:
-# the INPUT image-list + camera-list are params (any stage's cams - the transplant cams, or a previous
+# the INPUT image-list + camera-list are params (any stage's cams - the start cams, or a previous
 # stage's run-image_list.txt/run-camera_list.txt), plus refdem, dense matches, htUnc, camPosUnc, robust, an
 # OPTIONAL gcp (+ fix-gcp-xyz), and the intrFloat flag. OUTPUT = the experiment dir <pairDir>/frame/<outTag>.
 # tic = with gcp + fix-gcp-xyz + loose htUnc (horizontal). toc = no gcp + tight htUnc (vertical).

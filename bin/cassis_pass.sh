@@ -1,7 +1,7 @@
 #!/bin/bash
 # cassis_pass.sh - ONE formalized replication PASS at 18 m (the BLOCK).
 # Steps: [1] BOOTSTRAP corr the aligned LINESCAN DEM vs CTX @corrRes -> dem2gcp -> GCP0 (NO framelet BA -
-# the linescan is the registration anchor); [2] TIC = BA fix-gcp GCP0 from the transplant cams (first joint
+# the linescan is the registration anchor); [2] TIC = BA fix-gcp GCP0 from the start cams (first joint
 # BA = the anchor); [3] TOC = BA no-gcp + htdem from the tic cams (vertical, keeps horizontal); [4] STEREO
 # mapproject/correlate NATIVE mapprojRes, point2dem demRes; [5] EVAL corr @corrRes -> dd-H/dd-V + dz (this
 # ONE corr also feeds dem2gcp); [6] dem2gcp @corrRes -> GCP1 (next block input). Reuses cassis_ba.sh,
@@ -10,7 +10,7 @@
 #   <mapprojRes> <demRes> <corrRes> <corrSearch> <htUncTic> <htUncToc> <camPosUnc> <robust> <gcpSigma>
 #   <maxGcp> <maxDisp> <geounc> <outTag> <B>
 set +e; umask 022
-pairDir=${1:?pairDir}; startCamDir=${2:?startCamDir (transplant cams)}; linescanDEM=${3:?linescan aligned DEM}
+pairDir=${1:?pairDir}; startCamDir=${2:?startCamDir (start cams)}; linescanDEM=${3:?linescan aligned DEM}
 refdem=${4:?refdem (SHARP CTX)}; drape=${5:?drape (BLURRED CTX)}; matchpfx=${6:?matchpfx}
 Llook=${7:?Llook}; Rlook=${8:?Rlook}; mapprojRes=${9:?mapprojRes (NATIVE 4.59)}; demRes=${10:?demRes (18)}
 corrRes=${11:?corrRes (18)}; corrSearch=${12:?corrSearch}; htUncTic=${13:?htUncTic}; htUncToc=${14:?htUncToc}
@@ -27,7 +27,7 @@ echo "  htUncTic=$htUncTic htUncToc=$htUncToc camPosUnc=$camPosUnc robust=$robus
 for f in "$linescanDEM" "$refdem" "$drape"; do [ -s "$f" ] || { echo "ERROR missing $f"; exit 1; }; done
 G=$pairDir/frame/$outTag; mkdir -p "$G/dem2gcp"
 
-# build the transplant image/camera lists (1-1): each transplant .json + its matching cub
+# build the start-cam image/camera lists (1-1): each start-cam .json + its matching cub
 img=$G/images.txt; cam=$G/cameras.txt; : > "$img"; : > "$cam"
 for camf in "$startCamDir"/*.json; do
   [ -e "$camf" ] || continue
@@ -49,7 +49,7 @@ bash gen_gcp.sh "$boot/warped_${corrRes}m.tif" "$boot/ctx_${corrRes}m.tif" "$boo
   "$img" "$cam" "$matchpfx" "$maxDisp" "$gcp0" "$gcpSigma" "$maxGcp" || { echo "STAGE_FAIL boot gcp"; exit 1; }
 echo "  GCP0: $gcp0 ($(grep -vc '^#' "$gcp0" 2>/dev/null) pts)"
 
-# === [2] TIC: first joint BA, fix-gcp GCP0 (from the transplant cams) - horizontal anchor ===
+# === [2] TIC: first joint BA, fix-gcp GCP0 (from the start cams) - horizontal anchor ===
 echo "=== [2/6] TIC BA fix-gcp $(date) ==="
 bash cassis_ba.sh "$pairDir" "${outTag}_tic" "$img" "$cam" "$refdem" "$matchpfx" \
   "$htUncTic" "$camPosUnc" "$gcp0" yes "$robust" no_intr_float "$B" || { echo "STAGE_FAIL tic"; exit 1; }

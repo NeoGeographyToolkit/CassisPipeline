@@ -6,7 +6,7 @@
 #
 # Per framelet: input = sl/Lk.json (CASSIS type 9, a symlink to the full-name baby- cam) + sl/Lk.cub;
 # resolve the full stem from the symlink target; cam_gen --csm-refit-distortion (exact pose, distortion
-# only) -> <site>/frame/sl_refit_full/<fullstem>.json. Mac dev build (loads CASSIS type 9; pfe cannot).  [2026-07-09: OBSOLETE - pfe NOW loads CASSIS type 9]
+# only) -> <site>/frame/registered_cassis_cams/<fullstem>.json. Mac dev build (loads CASSIS type 9; pfe cannot).  [2026-07-09: OBSOLETE - pfe NOW loads CASSIS type 9]
 set +e; umask 022
 source "$(ls -d $HOME/*conda3/etc/profile.d/conda.sh 2>/dev/null|head -1)" 2>/dev/null
 # ASP/ISIS tools on PATH and environment (ISIS kernels) are set up by the caller.
@@ -18,7 +18,7 @@ echo "=== [refit_fullname] START $(date) host=$(uname -n) ==="
 sites="jezero/MY36_016378_162 oxia_planum/MY34_003806_019 oxia_planum/MY34_004172_162"
 total=0; fail=0
 for D in $sites; do
-  out=$D/frame/sl_refit_full; mkdir -p "$out"
+  out=$D/frame/registered_cassis_cams; mkdir -p "$out"
   echo "--- site $D -> $out ($(date)) ---"
   for cam in "$D"/frame/sl/*.json; do
     [ -e "$cam" ] || continue
@@ -41,6 +41,6 @@ echo "=== [refit_fullname] DONE $(date) total=$total fail=$fail ==="
 # SANITY: c0 shared across framelets/sites (~0.0009 = sl_refit)?
 echo "--- sanity: c0 of one full-name refit per site ---"
 for D in $sites; do
-  f=$(ls "$D"/frame/sl_refit_full/*.json 2>/dev/null | head -1)
+  f=$(ls "$D"/frame/registered_cassis_cams/*.json 2>/dev/null | head -1)
   [ -s "$f" ] && tail -n +2 "$f" | python3 -c "import sys,json;d=json.load(sys.stdin);c=d.get('m_opticalDistCoeffs',[]);print('  $D  type=%s c0=%.5f c1=%.5f'%(d.get('m_distortionType'),c[0],c[1]))"
 done

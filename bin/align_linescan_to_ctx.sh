@@ -12,7 +12,7 @@
 # Judge ONLY by the red/green hillshade overlay (Claude-has-eyes); geodiff std is
 # BLIND to horizontal shift on this flat plain. --max-displacement -1 handles the
 # ~8 km uncontrolled-SPICE vertical offset.
-# Usage: align_ls_to_ctx.sh <pairDir> <L_strip> <L_tiestate> <R_strip> <R_tiestate> [tag]
+# Usage: align_linescan_to_ctx.sh <pairDir> <L_strip> <L_tiestate> <R_strip> <R_tiestate> [tag]
 #   pairDir e.g. oxia_planum/MY34_003806_019 ; tag default "cs"
 set -e
 # ASP/ISIS tools on PATH and environment (ISIS kernels) are set up by the caller.

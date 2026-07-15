@@ -10,16 +10,16 @@ if [ -n "$W" ] && [ -n "$L" ] && [ -n "$R" ] && [ -n "$T" ]; then
   :
 else
 case "$1" in
- oxia1)  W=oxia_planum/MY34_003806_019; L=276230221; R=276230222; T=$W/ls/ls_dem/align/run-transform.txt ;;
- oxia2)  W=oxia_planum/MY34_004172_162; L=276980361; R=276980362; T=$W/ls/ls_dem/align2/run-transform.txt ;;
- jezero) W=jezero/MY36_016378_162;      L=838849161; R=838849162; T=$W/ls/ls_dem/align/run-transform.txt ;;
+ oxia1)  W=oxia_planum/MY34_003806_019; L=276230221; R=276230222; T=$W/linescan/linescan_dem/align/run-transform.txt ;;
+ oxia2)  W=oxia_planum/MY34_004172_162; L=276980361; R=276980362; T=$W/linescan/linescan_dem/align2/run-transform.txt ;;
+ jezero) W=jezero/MY36_016378_162;      L=838849161; R=838849162; T=$W/linescan/linescan_dem/align/run-transform.txt ;;
  *) echo "usage: cassis_align_cams.sh <oxia1|oxia2|jezero>  OR set W/L/R/T env"; exit 2 ;;
 esac
 fi
-Ls=$W/ls/${L}_strip.tif; Rs=$W/ls/${R}_strip.tif
-sL=$W/ls/ls_dem/ba/run-${L}_linescan.adjusted_state.json
-sR=$W/ls/ls_dem/ba/run-${R}_linescan.adjusted_state.json
-out=$W/ls/ls_dem/cams_aligned
+Ls=$W/linescan/${L}_strip.tif; Rs=$W/linescan/${R}_strip.tif
+sL=$W/linescan/linescan_dem/ba/run-${L}_linescan.adjusted_state.json
+sR=$W/linescan/linescan_dem/ba/run-${R}_linescan.adjusted_state.json
+out=$W/linescan/linescan_dem/cams_aligned
 for f in "$Ls" "$Rs" "$sL" "$sR" "$T"; do [ -s "$f" ] || { echo "MISSING $f"; exit 1; }; done
 mkdir -p "$out"
 echo "=== apply $T to linescan cams [$1] ==="

@@ -1,9 +1,9 @@
 #!/bin/bash
 # cassis_build_sl.sh - GENERIC sl/ short-name farm (the .match hash-trap defense). Symlinks
 # frame/sl/L<k>.{cub,json} (k = framelet index) -> the canonical framelet cube (data/) + its TRANSVERSE
-# refit cam (frame/sl_refit_full/<stem>.json). Built ONCE. $PWD-absolute targets to the canonical files
+# refit cam (frame/registered_cassis_cams/<stem>.json). Built ONCE. $PWD-absolute targets to the canonical files
 # (no run-dir indirection).
-#   Args: $1 pairDir  $2 dataDir  $3 sidL  $4 sidR  $5 camDir(full-name transverse cams, frame/sl_refit_full)
+#   Args: $1 pairDir  $2 dataDir  $3 sidL  $4 sidR  $5 camDir(full-name transverse cams, frame/registered_cassis_cams)
 set -e
 # Run this from your work directory. See the repository README.
 P=$1; DATA=$2; sidL=$3; sidR=$4; CAM=$5

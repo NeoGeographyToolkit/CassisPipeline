@@ -1,15 +1,15 @@
 #!/bin/bash
 # cassis_process.sh - the SINGLE end-to-end CaSSIS pipeline, from original inputs to the FINAL DEM.
-# Config-driven (sources cassis_recipe.conf + a per-site cassis_site_<nick>.conf), RESUMABLE by
+# Config-driven (sources cassis_common.conf + a per-site cassis_<nick>_site.conf), RESUMABLE by
 # stage number, and TIMED (every heavy stage prints START/DONE + elapsed via `date`). No figures.
 #
 # STAGES (run stage k iff fromStage <= k <= toStage; each skips cheaply if its output already exists):
 #   0  CTX reference build        cassis_ctx_build.sh          -> refdem + drape   [PREP]
 #   1  linescan DEM               cassis_linescan_dem.sh       -> ls stereo DEM    [PREP, needs kernels]
-#   2  align linescan -> CTX      align_ls_to_ctx.sh           -> aligned-DEM      [PREP]
+#   2  align linescan -> CTX      align_linescan_to_ctx.sh           -> aligned-DEM      [PREP]
 #   3  baby frames + sl farm      linescan2babyframes.sh+build -> frame/sl,sl_refit [PREP]
-#   4  refit lens -> transverse   refit_transverse.sh          -> sl_refit_full    [PREP]
-#   5  transplant jfg + refit pose (cam_gen loop)              -> startCamDir      [HEAVY]
+#   4  refit lens -> transverse   refit_transverse.sh          -> registered_cassis_cams    [PREP]
+#   5  apply optimized distortion + refit pose (cam_gen loop)              -> startCamDir      [HEAVY]
 #   6  dense matches                                           -> matchpfx*.match  [HEAVY]
 #   7  pass1  (cassis_run.sh pass1)                        -> pass1 DEM        [HEAVY]
 #   8  pass2  (cassis_run.sh pass2)                        -> FINAL DEM        [HEAVY]
@@ -21,11 +21,11 @@
 # The final delivered DEM = <pairDir>/frame/<nick>_cpass2_stereo/dem_frame_mosaic.tif (+ _onctx.tif).
 #
 # Usage:  cassis_process.sh <site.conf> <fromStage> <toStage> <tagBase> <B>
-#   e.g.  cassis_process.sh cassis_site_ox1.conf 5 8 cpass /path/to/workdir
+#   e.g.  cassis_process.sh cassis_ox1_site.conf 5 8 cpass /path/to/workdir
 #   tagBase names the pass1/pass2 output dirs (frame/<nick>_<tagBase>1, _<tagBase>2). Reuse an
 #   existing tagBase to RESUME/skip finished passes; pass a FRESH tagBase to force a fresh run.
 set +e; umask 022
-cfg=${1:?site config (cassis_site_<nick>.conf)}
+cfg=${1:?site config (cassis_<nick>_site.conf)}
 fromStage=${2:?fromStage (0..8)}
 toStage=${3:?toStage (0..8)}
 tagBase=${4:?tagBase (pass output tag base, e.g. cpass; fresh value forces a fresh pass1/pass2)}
@@ -35,20 +35,20 @@ B=${5:?work base dir, LAST}
 # See the repository README, Environment section.
 cd "$B" || { echo "ERROR cannot cd $B"; exit 1; }
 
-nick=$(basename "$cfg" .conf | sed 's/^cassis_site_//')
-[ -s "$B/cassis_recipe.conf" ] || { echo "ERROR missing cassis_recipe.conf"; exit 1; }
+nick=$(basename "$cfg" .conf | sed 's/^cassis_//; s/_site$//')
+[ -s "$B/cassis_common.conf" ] || { echo "ERROR missing cassis_common.conf"; exit 1; }
 [ -s "$B/$cfg" ] || { echo "ERROR missing site config $cfg"; exit 1; }
-source "$B/cassis_recipe.conf"
+source "$B/cassis_common.conf"
 source "$B/$cfg"
 matchpfx=${matchpfx:-$pairDir/frame/dense/matches/run-disp}
 # DERIVED per-site paths (uniform conventions; not config knobs)
-refitCamDir=$pairDir/frame/sl_refit_full     # stage-5 transplant input + stage-6 dense cams (full names)
+refitCamDir=$pairDir/frame/registered_cassis_cams     # stage-5 apply-distortion input + stage-6 dense cams (full names)
 
 log=$B/output_${nick}_process_${fromStage}_${toStage}.txt; exec > "$log" 2>&1
 echo "########## cassis_process START $(date) host=$(uname -n) nick=$nick stages $fromStage..$toStage ##########"
 echo "  cfg=$cfg pairDir=$pairDir"
 echo "  refdem=$refdem drape=$drape startCamDir=$startCamDir LL=$Llook RL=$Rlook"
-echo "  LENS(c0)=$(echo $LENS | awk '{print $1}') refitPosUnc=$refitPosUnc num_matches_from_disp=$num_matches_from_disp denseGeounc=$denseGeounc geounc=$geounc"
+echo "  optimized_distortion(c0)=$(echo $optimized_distortion | awk '{print $1}') refitPosUnc=$refitPosUnc num_matches_from_disp=$num_matches_from_disp denseGeounc=$denseGeounc geounc=$geounc"
 
 want(){ [ "$1" -ge "$fromStage" ] && [ "$1" -le "$toStage" ]; }   # run stage $1 ?
 t0all=$(date +%s)
@@ -67,13 +67,13 @@ if want 0; then
 fi
 if want 1; then
   stage_hdr 1 "linescan DEM (prep)"; t=$(date +%s)
-  echo "  PREP: cassis_linescan_dem.sh $nick on the prep host (needs SPICE kernels). Output ls/ls_dem/stereo/dem-DEM.tif"
+  echo "  PREP: cassis_linescan_dem.sh $nick on the prep host (needs SPICE kernels). Output linescan/linescan_dem/stereo/dem-DEM.tif"
   stage_done 1 "linescan DEM" "$t"
 fi
 if want 2; then
   stage_hdr 2 "align linescan->CTX (prep)"; t=$(date +%s)
   if [ -s "$linescanDEM" ]; then echo "  aligned linescan DEM exists - skip ($linescanDEM)";
-  else echo "  PREP: align_ls_to_ctx.sh on the prep host -> $linescanDEM"; fi
+  else echo "  PREP: align_linescan_to_ctx.sh on the prep host -> $linescanDEM"; fi
   stage_done 2 "align ls->CTX" "$t"
 fi
 if want 3; then
@@ -85,43 +85,43 @@ fi
 if want 4; then
   stage_hdr 4 "refit lens -> transverse (prep)"; t=$(date +%s)
   n4=$(ls "$refitCamDir"/*.json 2>/dev/null | wc -l | tr -d ' ')
-  if [ "${n4:-0}" -ge 2 ]; then echo "  sl_refit_full has $n4 cams - skip";
+  if [ "${n4:-0}" -ge 2 ]; then echo "  registered_cassis_cams has $n4 cams - skip";
   else echo "  PREP: refit_transverse.sh + cassis_refit_fullname.sh on the prep host -> $refitCamDir"; fi
   stage_done 4 "refit transverse" "$t"
 fi
 
-# ============================ STAGE 5: transplant jfg lens + refit pose (heavy) ============================
+# ============================ STAGE 5: apply optimized distortion + refit pose (heavy) ============================
 if want 5; then
-  stage_hdr 5 "transplant jfg + refit pose"; t=$(date +%s)
+  stage_hdr 5 "apply optimized distortion + refit pose"; t=$(date +%s)
   [ -d "$refitCamDir" ] || { echo "STAGE5_FAIL missing $refitCamDir - run prep stage 4 on the prep host"; exit 1; }
   [ -s "$refdem" ] || { echo "STAGE5_FAIL missing refdem $refdem - run prep stage 0"; exit 1; }
   nref=$(ls "$refitCamDir"/*.json 2>/dev/null | wc -l | tr -d ' ')
   [ "${nref:-0}" -ge 2 ] || { echo "STAGE5_FAIL too few refit cams ($nref) in $refitCamDir"; exit 1; }
   mkdir -p "$startCamDir"
   NCORE=$( (nproc 2>/dev/null) || echo 28); K=$(( NCORE > 2 ? NCORE : 2 ))
-  echo "  transplanting $nref cams (K=$K concurrent) refdem=$refdem posUnc=$refitPosUnc pix=$refitPixSamples"
+  echo "  applying optimized distortion to $nref cams (K=$K concurrent) refdem=$refdem posUnc=$refitPosUnc pix=$refitPixSamples"
   set +e; i=0; done5=0
   for cam in "$refitCamDir"/*.json; do
     [ -e "$cam" ] || continue
     stem=$(basename "$cam" .json)
     out5="$startCamDir/$stem.json"
-    [ -s "$out5" ] && { done5=$((done5+1)); continue; }   # resume: skip already-transplanted
+    [ -s "$out5" ] && { done5=$((done5+1)); continue; }   # resume: skip already-built
     cub=$(ls data/$pairDir/L*/$stem.cub 2>/dev/null | head -1)
     [ -s "$cub" ] || { echo "  MISS cub $stem"; continue; }
     cam_gen "$cub" --input-camera "$cam" --csm-refit-pose --distortion-type transverse \
-      --distortion "$LENS" --camera-position-uncertainty "$refitPosUnc" --reference-dem "$refdem" \
+      --distortion "$optimized_distortion" --camera-position-uncertainty "$refitPosUnc" --reference-dem "$refdem" \
       --datum "$refitDatum" --num-pixel-samples "$refitPixSamples" -o "$out5" > "$out5.camgen.log" 2>&1 &
     i=$((i+1)); [ $((i % K)) -eq 0 ] && wait
   done
   wait; set -e
   n5=$(ls "$startCamDir"/*.json 2>/dev/null | wc -l | tr -d ' ')
-  echo "  transplant cams now: $n5 of $nref (already-done skipped: $done5)"
-  [ "${n5:-0}" -ge 2 ] || { echo "STAGE5_FAIL too few transplant cams ($n5)"; exit 1; }
-  # sanity: c0 of a transplanted cam must be the jfg c0 (~ -10.8048)
+  echo "  start cams now: $n5 of $nref (already-done skipped: $done5)"
+  [ "${n5:-0}" -ge 2 ] || { echo "STAGE5_FAIL too few start cams ($n5)"; exit 1; }
+  # sanity: c0 of a start cam must be the optimized-distortion c0 (~ -10.8048)
   c0=$(tail -n +2 "$(ls $startCamDir/*.json | head -1)" | python3 -c "import sys,json;print('%.4f'%json.load(sys.stdin).get('m_opticalDistCoeffs',[0])[0])" 2>/dev/null)
-  echo "  transplant c0=$c0 (want -10.8048)"
+  echo "  start-cam c0=$c0 (want -10.8048)"
   case "$c0" in -10.8*) : ;; *) echo "STAGE5_FAIL c0 wrong ($c0)"; exit 1 ;; esac
-  stage_done 5 "transplant" "$t"
+  stage_done 5 "apply distortion" "$t"
 fi
 
 # ============================ STAGE 6: dense matches (heavy) ============================

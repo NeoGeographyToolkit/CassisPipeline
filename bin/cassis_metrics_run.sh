@@ -8,7 +8,7 @@ cfg=${1:?cfg}; from=${2:?fromStage}; to=${3:?toStage}; tagBase=${4:?tagBase}; B=
 # The ASP and ISIS tools must be on PATH and the environment set up beforehand.
 # See the repository README, Environment section.
 cd "$B" || { echo "ERROR cannot cd $B"; exit 1; }
-nick=$(basename "$cfg" .conf | sed 's/^cassis_site_//')
+nick=$(basename "$cfg" .conf | sed 's/^cassis_//; s/_site$//')
 mdir=$B/metrics_${nick}; mkdir -p "$mdir"
 samp=$mdir/sampler.log; : > "$samp"
 mlog=$mdir/run.log; exec > "$mlog" 2>&1

@@ -27,7 +27,7 @@ cd "$B"
 #   ARGS (or a per-site config file passed in), so a NEW site does NOT require editing this
 #   script's case block. Adding a site should be a command-line invocation, never a code edit.
 #   Same applies to every other per-site-cased script in this pipeline (run_ls_ba.sh,
-#   align_ls_to_ctx.sh, refit_transverse.sh, cassis_ba_stage2.sh, frame_*.sh, etc.).
+#   align_linescan_to_ctx.sh, refit_transverse.sh, cassis_ba_stage2.sh, frame_*.sh, etc.).
 site=$1
 # GENERIC new-site path (Oleg TODO above): if all 5 params are passed as env vars, use them and SKIP
 # the case block - adding a site becomes an invocation, not a code edit. Existing cases untouched.
@@ -36,15 +36,15 @@ if [ -n "$DATADIR" ] && [ -n "$SIDL" ] && [ -n "$SIDR" ] && [ -n "$WORK" ] && [ 
 else
 case "$site" in
   oxia1)  dataDir=data/oxia_planum/MY34_003806_019; sidL=276230221; sidR=276230222
-          work=oxia_planum/MY34_003806_019/ls; coarse=ref/oxia_planum_ctx/blend/oxia_ctx_expanded_18m.tif ;;
+          work=oxia_planum/MY34_003806_019/linescan; coarse=ref/oxia_planum_ctx/blend/oxia_ctx_expanded_18m.tif ;;
   oxia2)  dataDir=data/oxia_planum/MY34_004172_162; sidL=276980361; sidR=276980362
-          work=oxia_planum/MY34_004172_162/ls; coarse=ref/oxia_planum_ctx/blend/oxia_ctx_expanded_18m.tif ;;
+          work=oxia_planum/MY34_004172_162/linescan; coarse=ref/oxia_planum_ctx/blend/oxia_ctx_expanded_18m.tif ;;
   jezero) dataDir=data/jezero/MY36_016378_162; sidL=838849161; sidR=838849162
-          work=jezero/MY36_016378_162/ls; coarse=ref/jezero_ctx/jez_ctx_expanded_18m.tif ;;
+          work=jezero/MY36_016378_162/linescan; coarse=ref/jezero_ctx/jez_ctx_expanded_18m.tif ;;
 # TODO(oalexan1): the gusev entry below reuses a data/jezero fetch root for historical reasons.
 #   Rename to gusev/ + data/gusev/ later. These site paths are examples; override via env vars.
   gusev)  dataDir=data/jezero/MY34_003860_344_1; sidL=276342113; sidR=276342114
-          work=jezero/MY34_003860_344_1/ls; coarse=ref/gusev_ctx/gusev_ctx_clean_18m.tif ;;
+          work=jezero/MY34_003860_344_1/linescan; coarse=ref/gusev_ctx/gusev_ctx_clean_18m.tif ;;
   *) echo "usage: cassis_linescan_dem.sh <oxia1|oxia2|jezero|gusev>  OR set DATADIR/SIDL/SIDR/WORK/COARSE env"; exit 2 ;;
 esac
 fi
@@ -75,7 +75,7 @@ Ls=$work/${sidL}_strip.tif; Rs=$work/${sidR}_strip.tif
 Lisd=$work/${sidL}_linescan.json; Risd=$work/${sidR}_linescan.json
 if [ ! -s "$Ls" ] || [ ! -s "$Rs" ] || [ ! -s "$Lisd" ] || [ ! -s "$Risd" ]; then
   echo "=== S1 stack_strip_gen (strips, sub-pixel pitch) ==="
-  [ -d "${dataDir}/L1_${sidL}" ] || { echo "ERROR no raw framelets ${dataDir}/L1_${sidL} (run S1-S2 on the Mac then rsync ls/)"; exit 1; }
+  [ -d "${dataDir}/L1_${sidL}" ] || { echo "ERROR no raw framelets ${dataDir}/L1_${sidL} (run S1-S2 on the Mac then rsync linescan/)"; exit 1; }
   python3 stack_strip_gen.py "$dataDir" "$sidL" "$sidR" "$work" | tee "$work/strip_gen.txt"
   for sid in "$sidL" "$sidR"; do
     line=$(grep "^${sid}:" "$work/strip_gen.txt")
@@ -89,7 +89,7 @@ if [ ! -s "$Ls" ] || [ ! -s "$Rs" ] || [ ! -s "$Lisd" ] || [ ! -s "$Risd" ]; the
 fi
 for f in "$Ls" "$Rs" "$Lisd" "$Risd"; do [ -s "$f" ] || { echo "ERROR missing $f"; exit 1; }; done
 
-out=$work/ls_dem; mkdir -p "$out/ba" "$out/stereo" "$out/align"
+out=$work/linescan_dem; mkdir -p "$out/ba" "$out/stereo" "$out/align"
 seed=$coarse                                    # all coarse: seed = coarse ctx
 
 # --- S3: BA tie (L+R linescan, inline) ---
