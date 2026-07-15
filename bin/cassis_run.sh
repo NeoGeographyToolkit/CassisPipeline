@@ -6,14 +6,14 @@
 # every worker's output_<tag>_*.txt is PER-SITE automatically. cassis_process.sh delegates stages
 # 7-8 here; it can also be run standalone for a single pass.
 # Usage:  cassis_run.sh <site.conf> <pass1|pass2> <tagBase> <B>
-#   e.g.  cassis_run.sh cassis_jezero.conf pass1 cpass /path/to/workdir
-#   -> nick=jezero, pass1 outTag=jezero_cpass1 (frame/jezero_cpass1*, frame/jezero_cpass1_stereo);
-#      pass2 outTag=jezero_cpass2 builds on frame/jezero_cpass1/. ALL new runs are geounc=0. The
+#   e.g.  cassis_run.sh cassis_jezero.conf pass1 runTag /path/to/workdir
+#   -> nick=jezero, pass1 outTag=jezero_runTag1 (frame/jezero_runTag1*, frame/jezero_runTag1_stereo);
+#      pass2 outTag=jezero_runTag2 builds on frame/jezero_runTag1/. ALL new runs are geounc=0. The
 #      OLD on-disk frame/pass1_stereo,pass2_stereo were made EARLIER at geounc=50; we do NOT re-run
 #      or overwrite them - kept only as the "before" picture to compare the new geounc=0 result against.
 set +e; umask 022
 cfg=${1:?site config (cassis_siteName.conf)}; stage=${2:?stage pass1|pass2}
-tagBase=${3:?outTag base e.g. cpass}; B=${4:?work base LAST}
+tagBase=${3:?outTag base e.g. runTag}; B=${4:?work base LAST}
 # The ASP and ISIS tools must be on PATH and the environment set up beforehand.
 # See the repository README, Environment section.
 cd "$B" || { echo "ERROR cannot cd $B"; exit 1; }

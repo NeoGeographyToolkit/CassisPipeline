@@ -189,12 +189,13 @@ export PATH=/path/to/CassisPipeline/bin:$PATH
 cd /path/to/workdir
 
 # heavy stages (5 to 7):
-cassis_process.sh cassis_siteName.conf 5 7 cpass /path/to/workdir
+cassis_process.sh cassis_siteName.conf 5 7 runTag /path/to/workdir
 ```
 
 The five arguments are the site config, the first and last stage to run (5 and 7
-here), a run label (here cpass) that the pipeline uses to name the output
-directories so several runs can sit side by side, and the work directory.
+here), a run tag (here runTag) that the pipeline embeds in the names of the output
+directories, and the work directory. Choose a distinct run tag for each run so
+that separate runs land in separate directories and do not overwrite each other.
 
 Each stage skips cheaply if its output already exists, so a failure at stage k
 resumes at stage k. If dense matches are not present, start at stage 6, which
@@ -208,7 +209,7 @@ system:
 conda activate your-asp-env
 qsub -V -N cassis -l select=1:ncpus=28 -l walltime=6:00:00 -j oe -o /dev/null -- \
   /path/to/CassisPipeline/bin/cassis_process.sh \
-  cassis_siteName.conf 5 7 cpass /path/to/workdir
+  cassis_siteName.conf 5 7 runTag /path/to/workdir
 ```
 
 The -V flag is important. By default PBS starts the job with a clean environment,
