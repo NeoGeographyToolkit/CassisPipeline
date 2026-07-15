@@ -85,11 +85,15 @@ directory, never in this repository. This repo ships code only.
   Use the latest daily build or release from
   https://github.com/NeoGeographyToolkit/StereoPipeline/releases . The ASP
   distribution also bundles GNU parallel, which the pipeline uses.
-- **USGS ALE, built from latest source.** Tier 1 camera generation reads the
-  CaSSIS pose and lens distortion through ALE. CaSSIS driver support is in ALE
-  source but is not in any released ALE version yet, so ALE must be built from the
-  latest master of https://github.com/DOI-USGS/ale . Stock ALE will not produce
-  CaSSIS camera models. (not ready)
+- **CaSSIS-capable ALE and USGSCSM (planned as conda packages).** Tier 1 camera
+  generation reads the CaSSIS pose and lens distortion through ALE, and the camera
+  model uses the CASSIS distortion type in USGSCSM. CaSSIS support is not in the
+  official ALE and USGSCSM releases yet. It will be provided on the
+  nasa-ames-stereo-pipeline conda channel as part of the ASP dependency stack, so
+  that a standard ASP install is CaSSIS-capable and a single conda environment can
+  create the camera files. Until then, build ALE and USGSCSM from their latest
+  source (https://github.com/DOI-USGS/ale , https://github.com/DOI-USGS/usgscsm).
+  (not ready)
 - **ISIS and CaSSIS SPICE kernels**, on the acquisition and prep side, for
   tgocassis2isis and ALE.
 - **Python** with numpy and GDAL, for the pairing and evaluation helpers.
