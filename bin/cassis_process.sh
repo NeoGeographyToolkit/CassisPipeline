@@ -1,6 +1,6 @@
 #!/bin/bash
 # cassis_process.sh - the SINGLE end-to-end CaSSIS pipeline, from original inputs to the FINAL DEM.
-# Config-driven (sources cassis_common.conf + a per-site cassis_<nick>_site.conf), RESUMABLE by
+# Config-driven (sources cassis_common.conf + a per-site cassis_siteName.conf), RESUMABLE by
 # stage number, and TIMED (every heavy stage prints START/DONE + elapsed via `date`). No figures.
 #
 # STAGES (run stage k iff fromStage <= k <= toStage; each skips cheaply if its output already exists):
@@ -18,14 +18,14 @@
 # workstation with the kernels; stages 5-8 are the compute-heavy part, for a cluster or compute node. A
 # fresh site runs 0-4 on the prep host, then 5-8 on the compute node. For a site whose prep is already on
 # disk, just run `cassis_process.sh <conf> 5 8 <B>` on the compute node.
-# The final delivered DEM = <pairDir>/frame/<nick>_cpass2_stereo/dem_frame_mosaic.tif (+ _onctx.tif).
+# The final delivered DEM = <pairDir>/frame/siteName_cpass2_stereo/dem_frame_mosaic.tif (+ _onctx.tif).
 #
 # Usage:  cassis_process.sh <site.conf> <fromStage> <toStage> <tagBase> <B>
-#   e.g.  cassis_process.sh cassis_ox1_site.conf 5 8 cpass /path/to/workdir
-#   tagBase names the pass1/pass2 output dirs (frame/<nick>_<tagBase>1, _<tagBase>2). Reuse an
+#   e.g.  cassis_process.sh cassis_ox1.conf 5 8 cpass /path/to/workdir
+#   tagBase names the pass1/pass2 output dirs (frame/siteName_<tagBase>1, _<tagBase>2). Reuse an
 #   existing tagBase to RESUME/skip finished passes; pass a FRESH tagBase to force a fresh run.
 set +e; umask 022
-cfg=${1:?site config (cassis_<nick>_site.conf)}
+cfg=${1:?site config (cassis_siteName.conf)}
 fromStage=${2:?fromStage (0..8)}
 toStage=${3:?toStage (0..8)}
 tagBase=${4:?tagBase (pass output tag base, e.g. cpass; fresh value forces a fresh pass1/pass2)}

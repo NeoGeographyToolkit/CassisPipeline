@@ -109,7 +109,7 @@ sets PROJ_DATA, GDAL_DATA, and ISISROOT for you. Then prepend the pipeline bin t
 your PATH:
 
 ```bash
-conda activate <your-asp-env>
+conda activate your-asp-env
 export PATH=/path/to/CassisPipeline/bin:$PATH
 ```
 
@@ -134,9 +134,10 @@ repository. Example copies are in the config directory.
 - cassis_common.conf holds the shared recipe constants that are the same for every
   site: grid resolutions, bundle-adjustment uncertainties, the frozen lens
   coefficients, and dense-match settings. You normally do not edit this.
-- cassis_<nick>_site.conf holds the per-site data paths: the pair directory, the
-  CTX reference DEM and its blurred drape, the aligned linescan DEM, the start
-  camera directory, and the left and right look identifiers.
+- cassis_siteName.conf (for example cassis_jezero.conf) holds the per-site data
+  paths: the pair directory, the CTX reference DEM and its blurred drape, the
+  aligned linescan DEM, the start camera directory, and the left and right look
+  identifiers.
 
 The work directory is the anchor for everything. You run the pipeline from it, and
 it is passed as the last argument to every script, which changes into it before
@@ -158,7 +159,7 @@ point at data that is not yours.
 **Setting up a work directory (review each step):**
 
 1. Choose a work directory. You will run the pipeline from here.
-2. Copy cassis_common.conf and one cassis_<nick>_site.conf from the config
+2. Copy cassis_common.conf and one cassis_siteName.conf from the config
    directory into the work directory.
 3. Edit every path in the site config to point at your data, either relative to
    the work directory or absolute. Inspect each one and confirm the file it names
@@ -183,13 +184,17 @@ the reference dataset, and run the heavy stages. Set up the environment, then fr
 the work directory:
 
 ```bash
-conda activate <your-asp-env>
+conda activate your-asp-env
 export PATH=/path/to/CassisPipeline/bin:$PATH
 cd /path/to/workdir
 
 # heavy stages (5 to 7):
-cassis_process.sh cassis_<nick>_site.conf 5 7 cpass /path/to/workdir
+cassis_process.sh cassis_siteName.conf 5 7 cpass /path/to/workdir
 ```
+
+The five arguments are the site config, the first and last stage to run (5 and 7
+here), a run label (here cpass) that the pipeline uses to name the output
+directories so several runs can sit side by side, and the work directory.
 
 Each stage skips cheaply if its output already exists, so a failure at stage k
 resumes at stage k. If dense matches are not present, start at stage 6, which
@@ -200,10 +205,10 @@ batch job. Adapt the queue, account, node model, core count, and walltime to you
 system:
 
 ```bash
-conda activate <your-asp-env>
+conda activate your-asp-env
 qsub -V -N cassis -l select=1:ncpus=28 -l walltime=6:00:00 -j oe -o /dev/null -- \
   /path/to/CassisPipeline/bin/cassis_process.sh \
-  cassis_<nick>_site.conf 5 7 cpass /path/to/workdir
+  cassis_siteName.conf 5 7 cpass /path/to/workdir
 ```
 
 The -V flag is important. By default PBS starts the job with a clean environment,
@@ -217,12 +222,11 @@ its own log there.
 
 Running from scratch, with no prepared work directory, means building the
 preparation inputs (stages 0 to 4) on a workstation that has ISIS and the CaSSIS
-SPICE kernels. This part is not yet automated end to end. Running cassis_process.sh
-with stages 0 to 4 prints the sequence of preparation steps and the script for
-each, but does not execute them. Run those prep scripts (cassis_ctx_build.sh,
+SPICE kernels. All the scripts for this are provided (cassis_ctx_build.sh,
 cassis_linescan_dem.sh, align_linescan_to_ctx.sh, linescan2babyframes.sh,
-refit_transverse.sh) by hand for now. Once their outputs are on disk and the site
-config points at them, the heavy stages above run as shown.
+refit_transverse.sh). Run them individually, and after each one check that its
+expected products were created. Once those outputs are on disk and the site config
+points at them, the heavy stages above run as shown.
 
 The final DEM is written under the pair directory in the work directory. It is
 compared to the CTX reference with geodiff for the vertical difference, and by

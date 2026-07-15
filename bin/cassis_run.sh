@@ -1,18 +1,18 @@
 #!/bin/bash
 # cassis_run.sh - CONFIG-DRIVEN pass driver. Sources a shared recipe (cassis_common.conf) +
-# a per-site config (cassis_<nick>_site.conf), hard-errors on any unset var or missing input,
+# a per-site config (cassis_siteName.conf), hard-errors on any unset var or missing input,
 # then runs ONE stage: pass1 via cassis_pass.sh, pass2 via cassis_block.sh (builds on pass1's
 # cams+GCP1). Uses the existing full-name dense matches. The output tag carries the SITE NICK, so
 # every worker's output_<tag>_*.txt is PER-SITE automatically. cassis_process.sh delegates stages
 # 7-8 here; it can also be run standalone for a single pass.
 # Usage:  cassis_run.sh <site.conf> <pass1|pass2> <tagBase> <B>
-#   e.g.  cassis_run.sh cassis_jezero_site.conf pass1 cpass /path/to/workdir
+#   e.g.  cassis_run.sh cassis_jezero.conf pass1 cpass /path/to/workdir
 #   -> nick=jezero, pass1 outTag=jezero_cpass1 (frame/jezero_cpass1*, frame/jezero_cpass1_stereo);
 #      pass2 outTag=jezero_cpass2 builds on frame/jezero_cpass1/. ALL new runs are geounc=0. The
 #      OLD on-disk frame/pass1_stereo,pass2_stereo were made EARLIER at geounc=50; we do NOT re-run
 #      or overwrite them - kept only as the "before" picture to compare the new geounc=0 result against.
 set +e; umask 022
-cfg=${1:?site config (cassis_<nick>_site.conf)}; stage=${2:?stage pass1|pass2}
+cfg=${1:?site config (cassis_siteName.conf)}; stage=${2:?stage pass1|pass2}
 tagBase=${3:?outTag base e.g. cpass}; B=${4:?work base LAST}
 # The ASP and ISIS tools must be on PATH and the environment set up beforehand.
 # See the repository README, Environment section.
