@@ -8,14 +8,6 @@ that allow precise replication of the process of turning CaSSIS framelet images
 into a digital terrain model (DEM) registered against existing CTX terrain. The
 processing uses the NASA Ames Stereo Pipeline (ASP).
 
-## Status
-
-This project is being assembled. Some pieces are not yet public:
-
-- **ALE CaSSIS support is not released yet.** Initial camera generation needs a
-  build of USGS ALE from latest source. Stock ALE releases cannot produce CaSSIS
-  camera models. See Dependencies below. (not ready)
-
 ## Background
 
 The methodology, results, and validation against CTX are described in the [ASP
@@ -83,21 +75,15 @@ directory, never in this repository. This repo ships code only.
   distortion-type transverse, parallel_stereo with num-matches-from-disparity and
   mapproj-geolocation-uncertainty, and point2dem with max-valid-triangulation-error.
   Use the latest daily build or release from
-  https://github.com/NeoGeographyToolkit/StereoPipeline/releases . The ASP
-  distribution also bundles GNU parallel, which the pipeline uses.
-- **CaSSIS-capable ALE and USGSCSM (planned as conda packages).** Tier 1 camera
-  generation reads the CaSSIS pose and lens distortion through ALE, and the camera
-  model uses the CASSIS distortion type in USGSCSM. CaSSIS support is not in the
-  official ALE and USGSCSM releases yet. It will be provided on the
-  nasa-ames-stereo-pipeline conda channel as part of the ASP dependency stack, so
-  that a standard ASP install is CaSSIS-capable and a single conda environment can
-  create the camera files. Until then, build ALE and USGSCSM from their latest
-  source (https://github.com/DOI-USGS/ale , https://github.com/DOI-USGS/usgscsm).
-  (not ready)
+  https://github.com/NeoGeographyToolkit/StereoPipeline/releases . ASP ships its
+  own CaSSIS-capable ALE and USGSCSM (with the TGO CaSSIS driver and the CASSIS
+  distortion type) in its dependency stack, so a standard ASP install can both
+  create the CaSSIS camera files and run the stereo. ASP also bundles GNU parallel,
+  which the pipeline uses.
 - **ISIS and CaSSIS SPICE kernels**, on the acquisition and prep side, for
-  tgocassis2isis and ALE.
-- **Python** with numpy and GDAL, for the pairing and evaluation helpers.
-- **GNU parallel** (bundled with ASP) for the parallel pairwise stereo.
+  tgocassis2isis and the ALE camera generation.
+- **Python** with numpy and GDAL, for the pairing and evaluation helpers (also
+  provided by the ASP environment).
 
 ## Environment
 
@@ -107,13 +93,14 @@ They assume the ASP and ISIS tools are on your PATH, and that the projection and
 ISIS environment (PROJ_DATA, GDAL_DATA, ISISROOT) is already in place. Set this up
 in one of two ways.
 
-Recommended: activate a conda environment that provides ASP with its GDAL, PROJ,
-and ISIS stack, for example the conda-forge stereo-pipeline package. Activation
-sets PROJ_DATA, GDAL_DATA, and ISISROOT for you. Then prepend the pipeline bin to
-your PATH:
+Recommended: install ASP from the nasa-ames-stereo-pipeline conda channel, which
+provides a CaSSIS-capable ASP with its GDAL, PROJ, ISIS, ALE, and USGSCSM stack.
+Activation sets PROJ_DATA, GDAL_DATA, and ISISROOT for you. Then prepend the
+pipeline bin to your PATH:
 
 ```bash
-conda activate your-asp-env
+conda create -n asp -c nasa-ames-stereo-pipeline -c usgs-astrogeology -c conda-forge stereo-pipeline
+conda activate asp
 export PATH=/path/to/CassisPipeline/bin:$PATH
 ```
 
