@@ -4,10 +4,10 @@
 # == .xml count: tgocassis2isis on each calibrated framelet .xml -> .cub, then inject
 # SpacecraftClockStartCount from the XML hex-ASCII exposuretimestamp (PSA-export framelets lack the
 # clock keyword camera init needs; OBSOLETED by ISIS PR 6079 once that reaches the build). Idempotent
-# (skips framelets that already have a .cub). spiceinit + CSM ISD json are done SEPARATELY (cassis_
-# isd_l1.sh, kernel-gated, ale_cassis env). NO `set -u` (conda hooks use unbound vars).
-#   Arg: $1 = site data root (default data/MY34_004756_354_1); looks are its L*_* subdirs.
-SITEDATA=${1:-data/MY34_004756_354_1}
+# (skips framelets that already have a .cub). Camera generation is done SEPARATELY, with
+# cassis_make_cameras.sh. NO `set -u` (conda hooks use unbound vars).
+#   Arg: $1 = site data root; the looks are its L*_* subdirectories.
+SITEDATA=${1:?usage: cassis_ingest_cubes.sh <site data root>}
 LOCK=/tmp/cassis_ingest_$(echo "$SITEDATA" | tr '/' '_').lock
 mkdir "$LOCK" 2>/dev/null || { echo "another ingest running (lock $LOCK); exit"; exit 0; }
 trap 'rmdir "$LOCK" 2>/dev/null' EXIT

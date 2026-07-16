@@ -153,10 +153,11 @@ were produced, then set their paths in the site config. Documented at
 ### Stage 1, linescan DEM
 
 Merges each look into a single image, creates a linescan camera, and makes a
-first DEM. Needs the SPICE kernels.
+first DEM, aligned to the coarse CTX reference whose grid and projection drive
+every output. Needs the framelet cubes and cameras from acquisition.
 
 ```bash
-cassis_linescan_dem.sh <site>
+cassis_linescan_dem.sh <label> <dataDir> <sidL> <sidR> <work> <coarseCTX>
 ```
 
 Check that the linescan DEM was produced under the work directory. Documented at
@@ -164,13 +165,16 @@ Check that the linescan DEM was produced under the work directory. Documented at
 
 ### Stage 2, align linescan DEM to CTX
 
-Aligns the linescan DEM to the CTX reference.
+Carries the alignment transform found in stage 1 onto the tied linescan cameras,
+producing the CTX-aligned linescan camera states.
 
 ```bash
-align_linescan_to_ctx.sh <pairDir> <L_strip> <L_tiestate> <R_strip> <R_tiestate> [tag]
+cassis_align_cams.sh <pairDir> <sidL> <sidR> <transform.txt> [label]
 ```
 
-Check the aligned DEM, then set its path in the site config. Documented at
+The transform is the `run-transform.txt` written by stage 1 under
+`<pairDir>/linescan/linescan_dem/align/`. Check that the aligned camera states
+were written under `<pairDir>/linescan/linescan_dem/cams_aligned/`. Documented at
 [Initial registration](https://stereopipeline.readthedocs.io/en/latest/examples/cassis.html#cassis-init-reg).
 
 ### Stage 3, split into frame cameras
@@ -178,7 +182,7 @@ Check the aligned DEM, then set its path in the site config. Documented at
 Splits the registered linescan cameras back into per-framelet frame cameras.
 
 ```bash
-linescan2babyframes.sh <pairDir> <dataDir> <sid> <aligned_linescan_state> <look L|R>
+linescan2framelets.sh <pairDir> <dataDir> <sid> <aligned_linescan_state> <look L|R>
 ```
 
 Check that a frame camera was written per framelet. Documented at

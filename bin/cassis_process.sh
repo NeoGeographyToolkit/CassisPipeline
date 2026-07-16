@@ -6,8 +6,8 @@
 # STAGES (run stage k iff fromStage <= k <= toStage; each skips cheaply if its output already exists):
 #   0  CTX reference build        cassis_ctx_build.sh          -> refdem + drape   [PREP]
 #   1  linescan DEM               cassis_linescan_dem.sh       -> ls stereo DEM    [PREP, needs kernels]
-#   2  align linescan -> CTX      align_linescan_to_ctx.sh           -> aligned-DEM      [PREP]
-#   3  baby frames + sl farm      linescan2babyframes.sh+build -> frame/sl,sl_refit [PREP]
+#   2  align linescan -> CTX      cassis_align_cams.sh         -> cams_aligned states [PREP]
+#   3  aligned framelets         linescan2framelets.sh        -> frame/aligned_framelets [PREP]
 #   4  refit lens -> transverse   refit_transverse.sh          -> registered_cassis_cams    [PREP]
 #   5  apply optimized distortion + refit pose (cam_gen loop)              -> startCamDir      [HEAVY]
 #   6  dense matches                                           -> matchpfx*.match  [HEAVY]
@@ -73,20 +73,20 @@ fi
 if want 2; then
   stage_hdr 2 "align linescan->CTX (prep)"; t=$(date +%s)
   if [ -s "$linescanDEM" ]; then echo "  aligned linescan DEM exists - skip ($linescanDEM)";
-  else echo "  PREP: align_linescan_to_ctx.sh on the prep host -> $linescanDEM"; fi
+  else echo "  PREP: cassis_align_cams.sh on the prep host, using the stage-1 transform -> cams_aligned states"; fi
   stage_done 2 "align ls->CTX" "$t"
 fi
 if want 3; then
-  stage_hdr 3 "baby frames + sl farm (prep)"; t=$(date +%s)
-  if [ -d "$pairDir/frame/sl" ]; then echo "  sl farm exists - skip ($pairDir/frame/sl)";
-  else echo "  PREP: linescan2babyframes.sh + cassis_build_sl.sh on the prep host -> frame/sl, frame/sl_refit"; fi
-  stage_done 3 "baby frames + sl" "$t"
+  stage_hdr 3 "aligned framelets (prep)"; t=$(date +%s)
+  if [ -d "$pairDir/frame/aligned_framelets" ]; then echo "  aligned framelets exist - skip ($pairDir/frame/aligned_framelets)";
+  else echo "  PREP: linescan2framelets.sh on the prep host -> frame/aligned_framelets"; fi
+  stage_done 3 "aligned framelets" "$t"
 fi
 if want 4; then
   stage_hdr 4 "refit lens -> transverse (prep)"; t=$(date +%s)
   n4=$(ls "$refitCamDir"/*.json 2>/dev/null | wc -l | tr -d ' ')
   if [ "${n4:-0}" -ge 2 ]; then echo "  registered_cassis_cams has $n4 cams - skip";
-  else echo "  PREP: refit_transverse.sh + cassis_refit_fullname.sh on the prep host -> $refitCamDir"; fi
+  else echo "  PREP: refit_transverse.sh on the prep host -> $refitCamDir"; fi
   stage_done 4 "refit transverse" "$t"
 fi
 

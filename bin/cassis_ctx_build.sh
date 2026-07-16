@@ -3,7 +3,7 @@
 # Encodes the projection/datum/grid policy, the CTX stack formation logic, and the critical
 # coverage gate. Two policy points: (i) pull the CTX "dem" asset (SPHERE/ellipsoid), NOT geoid_adjusted_dem
 # (areoid); (ii) snap the -te to ODD multiples of 9 so the CTX grid matches the point2dem phase.
-# Runs on L1 (bandwidth + storage + direct outside access). NEVER on the Mac (home line, tight disk).
+# Needs internet access (STAC queries + DEM downloads) and disk. Run on a machine with outside access.
 #
 # Args (all site-varying values explicit; algorithm constants are internal):
 #   $1 VENDOR_DTM  path to the vendor CaSSIS CAS-DTM .tif (defines the footprint + box)

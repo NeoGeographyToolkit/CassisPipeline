@@ -1,19 +1,15 @@
 #!/bin/bash
-# cassis_linescan_dem.sh - PHASE 0: linescan DEM + sparse align to the COARSE CTX.
-# One script, 3 sites (3 param sets). From the vendor framelets: assemble a continuous
-# LINESCAN strip per look, tie L+R with bundle_adjust (inline), stereo, point2dem, then
-# a SPARSE pc_align (hillshade initial transform, rigid, max-disp -1, num-iter 0) to the
-# coarse CTX, and regrid the aligned DEM onto the coarse grid.
+# cassis_linescan_dem.sh - linescan DEM + sparse align to a coarse CTX DEM.
+# From the framelet cubes: assemble a continuous LINESCAN strip per look, tie L+R with
+# bundle_adjust (inline), stereo, point2dem, then a SPARSE pc_align (hillshade initial
+# transform, rigid, max-disp -1, num-iter 0) to the coarse CTX, and regrid the aligned DEM
+# onto the coarse grid.
 #
 # ALL COARSE: the coarse CTX is the ONLY geometry source - its proj, grid size, tr and
-# extent drive every output (seed, point2dem, align ref, regrid target). NOTHING about
+# extent drive every output (seed, point2dem, align ref, regrid target). Nothing about
 # grid/proj is hardcoded; grid + proj always agree because they come from one file.
 #
-# Machine-aware: runs on the Mac (raw data + asp_deps) or pfe (packaged release, PBS).
-# On pfe the strips must already exist (no raw framelets there); Jezero strips are made
-# once on the Mac (S1-S2) and rsynced. Plan + rationale: cassis_reprocess.sh PHASE 0.
-#
-# Usage: cassis_linescan_dem.sh <oxia1|oxia2|jezero>
+# Usage: cassis_linescan_dem.sh <label> <dataDir> <sidL> <sidR> <work> <coarseCTX>
 set -e
 
 # ASP/ISIS tools on PATH and environment (ISIS kernels) are set up by the caller.
@@ -21,33 +17,16 @@ set -e
 umask 022
 B=$PWD
 cd "$B"
+# The helper python scripts live next to this script (the pipeline bin dir), not
+# in the work dir, so invoke them by their own location, not CWD-relative.
+BIN=$(cd "$(dirname "$0")" && pwd)
 
-# --- per-site params (the ONLY hardcoded site facts: data, sids, workdir, coarse ctx) ---
-# TODO(oalexan1): make ALL of these params (dataDir, sidL, sidR, work, coarse) explicit INPUT
-#   ARGS (or a per-site config file passed in), so a NEW site does NOT require editing this
-#   script's case block. Adding a site should be a command-line invocation, never a code edit.
-#   Same applies to every other per-site-cased script in this pipeline (run_ls_ba.sh,
-#   align_linescan_to_ctx.sh, refit_transverse.sh, cassis_ba_stage2.sh, frame_*.sh, etc.).
-site=$1
-# GENERIC new-site path (Oleg TODO above): if all 5 params are passed as env vars, use them and SKIP
-# the case block - adding a site becomes an invocation, not a code edit. Existing cases untouched.
-if [ -n "$DATADIR" ] && [ -n "$SIDL" ] && [ -n "$SIDR" ] && [ -n "$WORK" ] && [ -n "$COARSE" ]; then
-  dataDir=$DATADIR; sidL=$SIDL; sidR=$SIDR; work=$WORK; coarse=$COARSE
-else
-case "$site" in
-  oxia1)  dataDir=data/oxia_planum/MY34_003806_019; sidL=276230221; sidR=276230222
-          work=oxia_planum/MY34_003806_019/linescan; coarse=ref/oxia_planum_ctx/blend/oxia_ctx_expanded_18m.tif ;;
-  oxia2)  dataDir=data/oxia_planum/MY34_004172_162; sidL=276980361; sidR=276980362
-          work=oxia_planum/MY34_004172_162/linescan; coarse=ref/oxia_planum_ctx/blend/oxia_ctx_expanded_18m.tif ;;
-  jezero) dataDir=data/jezero/MY36_016378_162; sidL=838849161; sidR=838849162
-          work=jezero/MY36_016378_162/linescan; coarse=ref/jezero_ctx/jez_ctx_expanded_18m.tif ;;
-# TODO(oalexan1): the gusev entry below reuses a data/jezero fetch root for historical reasons.
-#   Rename to gusev/ + data/gusev/ later. These site paths are examples; override via env vars.
-  gusev)  dataDir=data/jezero/MY34_003860_344_1; sidL=276342113; sidR=276342114
-          work=jezero/MY34_003860_344_1/linescan; coarse=ref/gusev_ctx/gusev_ctx_clean_18m.tif ;;
-  *) echo "usage: cassis_linescan_dem.sh <oxia1|oxia2|jezero|gusev>  OR set DATADIR/SIDL/SIDR/WORK/COARSE env"; exit 2 ;;
-esac
-fi
+# --- site params: ALL from explicit args, nothing hardcoded ---
+site=${1:?usage: cassis_linescan_dem.sh <label> <dataDir> <sidL> <sidR> <work> <coarseCTX>}
+dataDir=${2:?dataDir (holds L1_<sidL>/ and L2_<sidR>/ framelet cubes)}
+sidL=${3:?sidL}; sidR=${4:?sidR}
+work=${5:?work (linescan output directory)}
+coarse=${6:?coarseCTX (its proj/grid/extent drive every output)}
 [ -s "$coarse" ] || { echo "ERROR missing coarse ctx $coarse"; exit 1; }
 mkdir -p "$work"
 log=$B/output_linescan_${site}.txt
@@ -75,16 +54,16 @@ Ls=$work/${sidL}_strip.tif; Rs=$work/${sidR}_strip.tif
 Lisd=$work/${sidL}_linescan.json; Risd=$work/${sidR}_linescan.json
 if [ ! -s "$Ls" ] || [ ! -s "$Rs" ] || [ ! -s "$Lisd" ] || [ ! -s "$Risd" ]; then
   echo "=== S1 stack_strip_gen (strips, sub-pixel pitch) ==="
-  [ -d "${dataDir}/L1_${sidL}" ] || { echo "ERROR no raw framelets ${dataDir}/L1_${sidL} (run S1-S2 on the Mac then rsync linescan/)"; exit 1; }
-  python3 stack_strip_gen.py "$dataDir" "$sidL" "$sidR" "$work" | tee "$work/strip_gen.txt"
+  [ -d "${dataDir}/L1_${sidL}" ] || { echo "ERROR no framelet cubes ${dataDir}/L1_${sidL}"; exit 1; }
+  python3 "$BIN/stack_strip_gen.py" "$dataDir" "$sidL" "$sidR" "$work" | tee "$work/strip_gen.txt"
   for sid in "$sidL" "$sidR"; do
     line=$(grep "^${sid}:" "$work/strip_gen.txt")
     rev=$(echo "$line" | grep -q REVERSE && echo 1 || echo 0)
     keep=$(echo "$line" | sed -n 's/.*KEEP=\([0-9]*\).*/\1/p')
     echo "=== S1b assemble_pushframe sid=$sid reverse=$rev keep=$keep ==="
-    python3 assemble_pushframe_gen.py "$dataDir" "$sid" "$rev" "$keep" "$work/${sid}_pushframe.json"
+    python3 "$BIN/assemble_pushframe_gen.py" "$dataDir" "$sid" "$rev" "$keep" "$work/${sid}_pushframe.json"
     echo "=== S2 pushframe2linescan sid=$sid ==="
-    python3 pushframe2linescan.py "$work/${sid}_pushframe.json" "$work/${sid}_linescan.json"
+    python3 "$BIN/pushframe2linescan.py" "$work/${sid}_pushframe.json" "$work/${sid}_linescan.json"
   done
 fi
 for f in "$Ls" "$Rs" "$Lisd" "$Risd"; do [ -s "$f" ] || { echo "ERROR missing $f"; exit 1; }; done

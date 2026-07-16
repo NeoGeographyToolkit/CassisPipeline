@@ -4,7 +4,7 @@
 #   $1 orbit    (e.g. 4756)              $2 acq1 (L/STEREO1 sid)   $3 acq2 (R/STEREO2 sid)
 #   $4 destDir  (e.g. data/MY34_004756_354_1 - a CLEAN root, NOT the legacy data/jezero misnomer)
 # Downloads .dat/.xml PAN framelets (skips sti) into $destDir/L1_$acq1/ and L2_$acq2/. Resumable.
-# Runs anywhere with outside access (prefer l1 - bandwidth). PSA is slow (~0.5-1 file/s).
+# Runs anywhere with outside (internet) access. PSA is slow (~0.5-1 file/s).
 set -u
 orbit="$1"; a1="$2"; a2="$3"; DEST="$4"
 [ -n "$DEST" ] || { echo "usage: cassis_fetch_pair.sh orbit acq1 acq2 destDir"; exit 1; }

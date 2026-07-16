@@ -1,17 +1,19 @@
 #!/bin/bash
-# Decompose a BA-tied + CTX-ALIGNED LINESCAN strip into per-framelet "baby" FRAME
-# cameras. Adapted from the equivalent pushframe-state decomposition; the ONLY change is the pose source is
-# the aligned LINESCAN adjusted_state.json instead of a pushframe state. Both store
-# the per-framelet poses as m_positions (3*N) / m_quaternions (4*N) with node k <->
-# framelet k (time-sorted, so reversal-safe; verified for the pushframe, and the
-# linescan table was copied verbatim from it by pushframe2linescan.py). Each baby =
-# the framelet cube's FRAME CSM state (correct CASSIS optics + distortion type 9,
-# from a 0-iter ISD->state bundle_adjust) with its pose REPLACED by the aligned
-# linescan node for that framelet. So babies inherit the tie BA + CTX-align
-# registration -> the per-framelet bundle (S8) starts already on CTX.
-# SHORT names (sl/L<k>, sl/R<k>) are applied LATER by the dense-match/bundle step to
-# dodge the .match hash trap; here we keep the framelet-index naming.
-# Usage: linescan2babyframes.sh <pairDir> <dataDir> <sid> <aligned_linescan_state> <look L|R>
+# Decompose a BA-tied + CTX-aligned LINESCAN strip into per-framelet aligned FRAME
+# cameras (the "aligned_framelets"). This runs after the linescan bundle adjustment
+# and the pc_align to CTX. Adapted from the equivalent pushframe-state
+# decomposition; the ONLY change is the pose source is the aligned LINESCAN
+# adjusted_state.json instead of a pushframe state. Both store the per-framelet
+# poses as m_positions (3*N) / m_quaternions (4*N) with node k <-> framelet k
+# (time-sorted, so reversal-safe; verified for the pushframe, and the linescan
+# table was copied verbatim from it by pushframe2linescan.py). Each aligned
+# framelet = the framelet cube's FRAME CSM state (correct CASSIS optics +
+# distortion type 9, from a 0-iter ISD->state bundle_adjust) with its pose
+# REPLACED by the aligned linescan node for that framelet. So the aligned
+# framelets inherit the tie BA + CTX-align registration; the per-framelet bundle
+# starts already on CTX. Each keeps the framelet's long canonical name; no
+# short-name aliases or symlinks are used anywhere downstream.
+# Usage: linescan2framelets.sh <pairDir> <dataDir> <sid> <aligned_linescan_state> <look L|R>
 #   pairDir  e.g. oxia_planum/MY34_003806_019
 #   dataDir  e.g. data/oxia_planum/MY34_003806_019   (has L*_<sid>/)
 #   sid      e.g. 276230221
@@ -23,20 +25,20 @@ set -e
 
 pairDir=$1; data=$2; sid=$3; state=$4; look=$5
 [ -s "$state" ] || { echo "ERROR: missing aligned linescan state $state"; exit 1; }
-out=$pairDir/frame/babies/$sid; mkdir -p "$out"
+out=$pairDir/frame/aligned_framelets/$sid; mkdir -p "$out"
 
 # framelet cubes + ISDs, in framelet-index (=time) order
 cubes=$(ls $PWD/$data/L*_$sid/*-$sid-*-0__4_0.cub | sort -t- -k$(echo "$data/L*_$sid" | awk -F/ '{print NF+3}') 2>/dev/null || ls $PWD/$data/L*_$sid/*-$sid-*-0__4_0.cub)
 nc=$(echo "$cubes" | grep -c .)
 isds=$(for c in $cubes; do echo ${c%.cub}.json; done)
-echo "=== [babies $look $sid] $nc framelet cubes ==="
+echo "=== [aligned_framelets $look $sid] $nc framelet cubes ==="
 
-echo "=== [babies] 0-iter BA: framelet cubes -> raw frame CSM states ==="
+echo "=== [aligned_framelets] 0-iter BA: framelet cubes -> raw frame CSM states ==="
 bundle_adjust $cubes $isds --inline-adjustments --num-iterations 0 \
   --overlap-limit 1 --min-matches 0 --ip-per-image 500 -o $out/raw \
   > $out/ba0_log.txt 2>&1 || { echo "0-iter BA failed; see $out/ba0_log.txt"; tail -5 $out/ba0_log.txt; exit 1; }
 
-echo "=== [babies] pose-swap raw frame states with aligned linescan nodes ==="
+echo "=== [aligned_framelets] pose-swap raw frame states with aligned linescan nodes ==="
 python3 - "$state" "$out" "$sid" <<'PY'
 import json, glob, re, sys
 state_file, out, sid = sys.argv[1], sys.argv[2], sys.argv[3]
@@ -56,12 +58,12 @@ for raw in sorted(glob.glob(f'{out}/raw-*-{sid}-*-0__4_0.adjusted_state.json')):
     # frame param = [x,y,z, q0,q1,q2,q3]; replace with aligned linescan node k
     st['m_currentParameterValue'][0:3] = pos[3*k:3*k+3]
     st['m_currentParameterValue'][3:7] = quat[4*k:4*k+4]
-    baby = raw.replace('/raw-', '/baby-')
-    with open(baby,'w') as f:
+    aligned = raw.replace('/raw-', '/aligned-')
+    with open(aligned,'w') as f:
         if hashdr: f.write(st['m_modelName']+'\n')
         json.dump(st, f)
     n += 1
-print(f"  wrote {n} baby frame states for {sid} (of {nnodes} nodes)")
+print(f"  wrote {n} aligned framelet states for {sid} (of {nnodes} nodes)")
 PY
-echo "=== baby states: $(ls $out/baby-*.json 2>/dev/null | wc -l | tr -d ' ') ==="
-echo "BABIES_DONE $sid $look"
+echo "=== aligned framelet states: $(ls $out/aligned-*.json 2>/dev/null | wc -l | tr -d ' ') ==="
+echo "ALIGNED_FRAMELETS_DONE $sid $look"

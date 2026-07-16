@@ -18,15 +18,15 @@ mkdir -p "$out_dir"
 summary="$out_dir/camtest_summary.txt"
 : > "$summary"
 echo "name  center_diff_m  dir_diff_rad  pix_diff_median" | tee -a "$summary"
-# Accept either the Jezero run-<X>.adjusted_state.json naming OR the short Oxia
-# sl/<X>.json baby frames. name = bare stem either way; img = img_dir/<name>.cub.
+# Cameras are the aligned framelets (aligned-<stem>.adjusted_state.json) or
+# run-<X>.adjusted_state.json. name = bare stem either way; img = img_dir/<name>.cub.
 shopt -s nullglob
-# accept baby-<stem> (CTX-aligned frame babies), run-<X> (Jezero), or bare sl/<X>.json (Oxia)
-cams=( "$cam_dir"/baby-*.adjusted_state.json )
+# accept aligned-<stem> (CTX-aligned framelets), run-<X>, or bare <stem>.json
+cams=( "$cam_dir"/aligned-*.adjusted_state.json )
 [ ${#cams[@]} -eq 0 ] && cams=( "$cam_dir"/run-*.adjusted_state.json )
 [ ${#cams[@]} -eq 0 ] && cams=( "$cam_dir"/*.json )
 for cam in "${cams[@]}"; do
-  name=$(basename "$cam"); name=${name%.json}; name=${name%.adjusted_state}; name=${name#run-}; name=${name#baby-}
+  name=$(basename "$cam"); name=${name%.json}; name=${name%.adjusted_state}; name=${name#run-}; name=${name#aligned-}
   img="$img_dir/$name.cub"
   out="$out_dir/$name.json"
   if [ ! -f "$img" ]; then echo "$name MISSING_IMAGE $img" | tee -a "$summary"; continue; fi
