@@ -110,26 +110,26 @@ if want 0; then
 fi
 if want 1; then
   stage_hdr 1 "linescan DEM (prep)"; t=$(date +%s)
-  echo "  PREP: run 'cassis_linescan_dem.sh $cfg $B' on the prep host -> linescan/linescan_dem/align/aligned_oncoarse.tif"
+  echo "  PREP: run 'cassis_linescan_dem.sh $cfg $outDir $B' on the prep host -> $outDir/linescan/linescan_dem/align/aligned_oncoarse.tif"
   stage_done 1 "linescan DEM" "$t"
 fi
 if want 2; then
   stage_hdr 2 "align linescan->CTX (prep)"; t=$(date +%s)
   if [ -s "$linescanDem" ]; then echo "  aligned linescan DEM exists - skip ($linescanDem)";
-  else echo "  PREP: run 'cassis_align_cams.sh $cfg $B' on the prep host -> cams_aligned states"; fi
+  else echo "  PREP: run 'cassis_align_cams.sh $cfg $outDir $B' on the prep host -> cams_aligned states"; fi
   stage_done 2 "align ls->CTX" "$t"
 fi
 if want 3; then
   stage_hdr 3 "aligned framelets (prep)"; t=$(date +%s)
   if [ -d "$outDir/frame/aligned_framelets" ]; then echo "  aligned framelets exist - skip ($outDir/frame/aligned_framelets)";
-  else echo "  PREP: run 'linescan2framelets.sh $cfg $B' on the prep host -> frame/aligned_framelets"; fi
+  else echo "  PREP: run 'linescan2framelets.sh $cfg $outDir $B' on the prep host -> $outDir/frame/aligned_framelets"; fi
   stage_done 3 "aligned framelets" "$t"
 fi
 if want 4; then
   stage_hdr 4 "refit lens -> transverse (prep)"; t=$(date +%s)
   n4=$(ls "$refitCamDir"/*.json 2>/dev/null | wc -l | tr -d ' ')
   if [ "${n4:-0}" -ge 2 ]; then echo "  registered_cassis_cams has $n4 cams - skip";
-  else echo "  PREP: run 'refit_transverse.sh $cfg $B' on the prep host -> $refitCamDir"; fi
+  else echo "  PREP: run 'refit_transverse.sh $cfg $outDir $B' on the prep host -> $refitCamDir"; fi
   stage_done 4 "refit transverse" "$t"
 fi
 

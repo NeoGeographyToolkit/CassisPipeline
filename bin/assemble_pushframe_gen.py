@@ -2,7 +2,8 @@
 # Generalized: assemble a CaSSIS push-frame ISD for one look by merging its
 # per-framelet FRAME ISDs (made by isd_gen.py) into a strip trajectory. Mirrors
 # assemble_pushframe.py but takes args so it works for any pair.
-# Usage: assemble_pushframe_gen.py <data_dir_with_L*_<sid>> <sid> <reverse 0|1> <keep> <out.json>
+# Usage: assemble_pushframe_gen.py <inputCassisDir> <sid> <reverse 0|1> <keep> <out.json>
+#   inputCassisDir holds the looks' cubs+jsons (found by the sid in the filename, any subdir layout).
 #   reverse=1  -> framelet_order_reversed=true (the ~180 deg telescope-rotated look,
 #                 whose strip was stacked in reverse order; see stack_strip_gen.py)
 #   keep       -> framelet_height in the strip (= the trimmed central rows)
@@ -32,7 +33,7 @@ def merge_table(base_tab, isds, key, arrays):
             tab[osz] = len(tab['ephemeris_times'])
     return tab
 
-files = glob.glob(f'{data_dir}/L*_{sid}/*-{sid}-*-0__4_0.json')
+files = glob.glob(f'{data_dir}/*/*-{sid}-*-0__4_0.json') + glob.glob(f'{data_dir}/*-{sid}-*-0__4_0.json')
 idx = lambda f: int(re.search(rf'-{sid}-(\d+)-0__4_0', f).group(1))
 files = sorted(files, key=idx)
 isds = [json.load(open(f)) for f in files]

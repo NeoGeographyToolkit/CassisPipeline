@@ -5,24 +5,26 @@
 # by the aligned linescan node for that framelet. So the framelets inherit the tie bundle
 # adjustment and the CTX alignment; the per-framelet bundle starts already on CTX.
 #
-# Config-driven: reads pairDir + Llook/Rlook, derives the aligned-state path and the data dir,
+# Config-driven: reads inputCassisDir + Llook/Rlook (input) and the aligned states under outDir,
 # and does both looks in one call.
-# Usage: linescan2framelets.sh <site.conf> <workdir>
+# Usage: linescan2framelets.sh <site.conf> <outDir> <workdir>
 set -e
 umask 022
 # ASP/ISIS tools on PATH and the environment are set up by the caller. See the README.
-cfg=${1:?usage: linescan2framelets.sh <site.conf> <workdir>}
-B=${2:?workdir}
+cfg=${1:?usage: linescan2framelets.sh <site.conf> <outDir> <workdir>}
+outDir=${2:?outDir (output dir, relative to workdir or absolute)}
+B=${3:?workdir}
 cd "$B" || { echo "ERROR cannot cd $B"; exit 1; }
 [ -s "$B/cassis_common.conf" ] && source "$B/cassis_common.conf"
 [ -s "$B/$cfg" ] || { echo "ERROR missing site config $cfg"; exit 1; }
 source "$B/$cfg"
-data=data/$pairDir
+source cassis_env_check.sh
+cassis_require bundle_adjust
 
 for entry in "L $Llook" "R $Rlook"; do
   set -- $entry; look=$1; sid=$2
-  out=$pairDir/frame/aligned_framelets/$sid
-  state=$pairDir/linescan/linescan_dem/cams_aligned/run-run-${sid}_linescan.adjusted_state.json
+  out=$outDir/frame/aligned_framelets/$sid
+  state=$outDir/linescan/linescan_dem/cams_aligned/run-run-${sid}_linescan.adjusted_state.json
   # Idempotent: if the aligned framelet states already exist, there is nothing to do.
   if ls "$out"/aligned-*.json >/dev/null 2>&1; then
     echo "aligned framelets exist, skipping: $out"; continue
@@ -31,7 +33,7 @@ for entry in "L $Llook" "R $Rlook"; do
   mkdir -p "$out"
 
   # framelet cubes + ISDs, in framelet-index (=time) order
-  cubes=$(ls $PWD/$data/L*_$sid/*-$sid-*-0__4_0.cub | sort -t- -k$(echo "$data/L*_$sid" | awk -F/ '{print NF+3}') 2>/dev/null || ls $PWD/$data/L*_$sid/*-$sid-*-0__4_0.cub)
+  cubes=$(cassis_look_cubs "$inputCassisDir" "$sid")
   nc=$(echo "$cubes" | grep -c .)
   isds=$(for c in $cubes; do echo ${c%.cub}.json; done)
   echo "=== [aligned_framelets $look $sid] $nc framelet cubes ==="
@@ -70,4 +72,4 @@ print(f"  wrote {n} aligned framelet states for {sid} (of {nnodes} nodes)")
 PY
   echo "=== aligned framelet states: $(ls $out/aligned-*.json 2>/dev/null | wc -l | tr -d ' ') ==="
 done
-echo "ALIGNED_FRAMELETS_DONE $pairDir"
+echo "ALIGNED_FRAMELETS_DONE $outDir"

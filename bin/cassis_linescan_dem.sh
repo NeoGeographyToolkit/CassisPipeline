@@ -9,13 +9,14 @@
 # extent drive every output (seed, point2dem, align ref, regrid target). Nothing about
 # grid/proj is hardcoded; grid + proj always agree because they come from one file.
 #
-# Usage: cassis_linescan_dem.sh <site.conf> <workdir>
+# Usage: cassis_linescan_dem.sh <site.conf> <outDir> <workdir>
 set -e
 
 # ASP/ISIS tools on PATH and the environment are set up by the caller. See the README.
 umask 022
-cfg=${1:?usage: cassis_linescan_dem.sh <site.conf> <workdir>}
-B=${2:?workdir}
+cfg=${1:?usage: cassis_linescan_dem.sh <site.conf> <outDir> <workdir>}
+outDir=${2:?outDir (output dir, relative to workdir or absolute)}
+B=${3:?workdir}
 cd "$B" || { echo "ERROR cannot cd $B"; exit 1; }
 # The helper python scripts live next to this script (the pipeline bin dir), so
 # invoke them by their own location, not relative to the work dir.
@@ -23,12 +24,14 @@ BIN=$(cd "$(dirname "$0")" && pwd)
 [ -s "$B/cassis_common.conf" ] && source "$B/cassis_common.conf"
 [ -s "$B/$cfg" ] || { echo "ERROR missing site config $cfg"; exit 1; }
 source "$B/$cfg"
+source cassis_env_check.sh
+cassis_require bundle_adjust parallel_stereo point2dem pc_align gdalwarp gdalinfo gdalsrsinfo
 
-# Everything is derived from the config by convention.
+# Input cubs come from inputCassisDir (found by look sid); outputs go under outDir.
 site=$(basename "$cfg" .conf | sed 's/^cassis_//; s/_site$//')   # nick, for the log name
-dataDir=data/$pairDir
+dataDir=$inputCassisDir
 sidL=$Llook; sidR=$Rlook
-work=$pairDir/linescan
+work=$outDir/linescan
 coarse=$refDem
 [ -s "$coarse" ] || { echo "ERROR missing reference CTX (refDem) $coarse"; exit 1; }
 mkdir -p "$work"
@@ -63,7 +66,7 @@ Ls=$work/${sidL}_strip.tif; Rs=$work/${sidR}_strip.tif
 Lisd=$work/${sidL}_linescan.json; Risd=$work/${sidR}_linescan.json
 if [ ! -s "$Ls" ] || [ ! -s "$Rs" ] || [ ! -s "$Lisd" ] || [ ! -s "$Risd" ]; then
   echo "=== S1 stack_strip_gen (strips, sub-pixel pitch) ==="
-  [ -d "${dataDir}/L1_${sidL}" ] || { echo "ERROR no framelet cubes ${dataDir}/L1_${sidL}"; exit 1; }
+  [ -n "$(cassis_look_cubs "$inputCassisDir" "$sidL")" ] || { echo "ERROR no framelet cubs for look $sidL under $inputCassisDir"; exit 1; }
   python3 "$BIN/stack_strip_gen.py" "$dataDir" "$sidL" "$sidR" "$work" | tee "$work/strip_gen.txt"
   for sid in "$sidL" "$sidR"; do
     line=$(grep "^${sid}:" "$work/strip_gen.txt")

@@ -10,7 +10,8 @@
 # Writes <out_dir>/<sid>_strip.tif and prints, per sid, REVERSE/TIME + KEEP, which
 # assemble_pushframe_gen.py consumes (framelet_order_reversed).
 #
-# Usage: stack_strip_gen.py <data_dir_with_L*_<sid>> <sid1> <sid2> <out_dir>
+# Usage: stack_strip_gen.py <inputCassisDir> <sid1> <sid2> <out_dir>
+#   inputCassisDir holds the looks' cubs (found by the sid in the filename, any subdir layout).
 import sys, glob, re, numpy as np
 from osgeo import gdal
 gdal.UseExceptions()
@@ -19,7 +20,7 @@ data_dir, sid1, sid2, out_dir = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[
 import os; os.makedirs(out_dir, exist_ok=True)
 
 def framelets(sid):
-    fs = glob.glob(f'{data_dir}/L*_{sid}/*-{sid}-*-0__4_0.cub')
+    fs = glob.glob(f'{data_dir}/*/*-{sid}-*-0__4_0.cub') + glob.glob(f'{data_dir}/*-{sid}-*-0__4_0.cub')
     idx = lambda f: int(re.search(rf'-{sid}-(\d+)-0__4_0', f).group(1))
     return [f for f in sorted(fs, key=idx)]
 
