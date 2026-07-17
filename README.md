@@ -168,9 +168,10 @@ are in the config directory.
   settings). You normally do not edit it. The lens coefficients are a global
   CaSSIS instrument constant, reused as is for every site.
 - cassis_siteName.conf (for example cassis_jezero.conf) holds the per-site data
-  paths: the pair directory, the CTX reference DEM and the low-resolution blurred
-  CTX DEM used for mapprojection, the aligned linescan DEM, the start camera
-  directory, and the left and right look identifiers.
+  paths: the pair directory, the CTX reference DEM, the low-resolution blurred
+  CTX DEM used for mapprojection, and the left and right look identifiers. The
+  aligned linescan DEM and the start camera directory are derived from the pair
+  directory by convention, so they are not listed here.
 
 Every path in the site config is interpreted relative to the work directory
 unless it is absolute. Copy the two sample files from the config directory into
