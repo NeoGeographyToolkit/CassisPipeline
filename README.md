@@ -40,19 +40,12 @@ from-scratch run splits in two: the preparation on a kernel-equipped workstation
 
 ## Dependencies
 
-Kept short here on purpose. The exact packages and conda environments are in the
-ASP CaSSIS documentation.
-
 - **Ames Stereo Pipeline (ASP), a recent build, from 2026/7 or later**, from the
   [releases page](https://github.com/NeoGeographyToolkit/StereoPipeline/releases).
-  That build is required, as it carries the CaSSIS camera support. It
-  carries its own CaSSIS-capable ISIS, ALE, and USGSCSM, and bundles GNU parallel,
-  so a standard ASP install can create the CaSSIS cameras and run the stereo.
-- **A conda environment providing GDAL and PROJ**, for the pairing and evaluation
-  helpers. See Setup below.
-- **ISIS and the CaSSIS SPICE kernels**, only for acquisition and preparation. The
-  two conda environments used there, one for ISIS ingestion and one for the
-  CaSSIS-capable camera generation, are described in
+  That build is required, as it carries the CaSSIS camera support.
+- **ISIS and the CaSSIS SPICE kernels**, only for acquisition and preparation.
+- Two conda environments, one for ISIS ingestion and one for the
+  CaSSIS-capable camera generation. See:
   [ISIS environment](https://stereopipeline.readthedocs.io/en/latest/examples/cassis.html#cassis-isis-env)
   and
   [Creating the CaSSIS CSM cameras](https://stereopipeline.readthedocs.io/en/latest/examples/cassis.html#cassis-csm).
@@ -69,34 +62,30 @@ LICENSE
 Scripts live in bin. Data and configuration live in a separate user work
 directory, never in this repository. This repo ships code only.
 
-## Setup, done once
+## Setup
 
-The scripts set up no environment themselves and hardcode no paths. Two things to
+The scripts set up no environment themselves and hardcode no paths. Three things to
 prepare before running any stage. This is read once and applies to every stage
 below.
 
-First, a conda environment that provides GDAL and PROJ. This is where the tools
-find proj.db and the projection data. Channel priority must be flexible, as for
-the ASP install.
+Install the [usgscsm_cassis](https://stereopipeline.readthedocs.io/en/latest/examples/cassis.html#cassis-csm) conda environment and activate it.
 
 ```bash
-conda config --set channel_priority flexible
-conda create -n cassis-gdal -c conda-forge gdal numpy scipy
-conda activate cassis-gdal
+conda activate usgscsm_cassis
 ```
 
-Second, put the ASP release and this pipeline on your PATH. ASP is a
-self-contained release, downloaded and unpacked from the releases page; it is not
-installed through conda, and its tool wrappers set ISISROOT for you.
+Put the ASP release and this pipeline on your PATH. ASP is a self-contained
+release, downloaded and unpacked from the releases page; it is not installed
+through conda, and its tool wrappers set ISISROOT for you.
 
 ```bash
 export PATH=/path/to/CassisPipeline/bin:/path/to/StereoPipeline/bin:$PATH
 ```
 
-A proj.db not found error is the usual sign that the GDAL conda environment is
+A proj.db not found error is the usual sign that the usgscsm_cassis environment is
 not activated.
 
-Third, the configuration. Because the scripts are generic, you tell the pipeline
+Finally, the configuration. Because the scripts are generic, you tell the pipeline
 where your data is through two files, which live in your work directory, not in
 this repository. Example copies are in the config directory.
 
@@ -141,15 +130,29 @@ data), which already has stages 0 to 4 done.
 ### Stage 0, CTX reference DEM build
 
 Assembles the CTX reference DEM and the low-resolution blurred CTX DEM used for
-mapprojection for the site from existing CTX DEMs. Run on the prep host:
+mapprojection for the site from existing CTX DEMs. See the
+[documentation](https://stereopipeline.readthedocs.io/en/latest/examples/cassis.html#cassis-ctx-ref).
+
+
+Activate the conda environment providing gdal:
+
+```bash
+conda activate usgscsm_cassis
+```
+
+Run on the prep host:
 
 ```bash
 cassis_ctx_build.sh VENDOR_DTM LAT0 LON0 OUTDIR TAG
 ```
 
-See the script header for the arguments. Check that the reference DEM and the
-mapprojection DEM were produced, then set their paths in the site config. Documented at
-[Reference CTX DEM](https://stereopipeline.readthedocs.io/en/latest/examples/cassis.html#cassis-ctx-ref).
+See the script header for the arguments.
+
+This step needs special attention as some sites may not have prior CTX DEM
+coverage or not all of them may be of good quality.
+
+Check that the reference DEM and the mapprojection DEM were produced, then set
+their paths in the site config.
 
 ### Stage 1, linescan DEM
 
@@ -208,7 +211,7 @@ On a PBS or qsub cluster, for example NASA Pleiades, submit them as a job and
 adapt the queue, account, node model, core count, and walltime to your system:
 
 ```bash
-conda activate cassis-gdal
+conda activate usgscsm_cassis
 qsub -V -N cassis -l select=1:ncpus=28 -l walltime=6:00:00 -j oe -o /dev/null -- \
   /path/to/CassisPipeline/bin/cassis_process.sh \
   cassis_siteName.conf 5 8 runTag /path/to/workdir
@@ -265,6 +268,7 @@ then, in the ISIS environment, ingest each framelet to an ISIS cube
 ([Ingesting to ISIS cubes](https://stereopipeline.readthedocs.io/en/latest/examples/cassis.html#cassis-ingest)):
 
 ```bash
+conda activate isis10
 cassis_ingest_cubes.sh data/<pairDir>
 ```
 
@@ -273,6 +277,7 @@ camera per framelet cube
 ([Creating the CaSSIS CSM cameras](https://stereopipeline.readthedocs.io/en/latest/examples/cassis.html#cassis-csm)):
 
 ```bash
+conda activate usgscsm_cassis
 cassis_make_cameras.sh data/<pairDir>
 ```
 
