@@ -16,6 +16,11 @@ Ls=$W/linescan/${L}_strip.tif; Rs=$W/linescan/${R}_strip.tif
 sL=$W/linescan/linescan_dem/ba/run-${L}_linescan.adjusted_state.json
 sR=$W/linescan/linescan_dem/ba/run-${R}_linescan.adjusted_state.json
 out=$W/linescan/linescan_dem/cams_aligned
+# Idempotent: if the aligned camera states already exist, there is nothing to do.
+if ls "$out"/run-*adjusted_state.json >/dev/null 2>&1; then
+  echo "aligned camera states exist, skipping: $out"
+  exit 0
+fi
 for f in "$Ls" "$Rs" "$sL" "$sR" "$T"; do [ -s "$f" ] || { echo "MISSING $f"; exit 1; }; done
 mkdir -p "$out"
 echo "=== apply $T to linescan cams [$label] ==="

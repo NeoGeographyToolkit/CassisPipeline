@@ -14,6 +14,12 @@ set -e
 # ASP/ISIS tools on PATH and environment (ISIS kernels) are set up by the caller.
 # Run this from your work directory. See the repository README.
 cam_dir=$1; img_dir=$2; out_dir=$3; datum=${4:-D_MARS}
+# Idempotent: if the refit output cameras already exist, there is nothing to do.
+nout=$(ls "$out_dir"/*.json 2>/dev/null | wc -l | tr -d ' ')
+if [ "${nout:-0}" -ge 2 ]; then
+  echo "refit cameras exist ($nout), skipping: $out_dir"
+  exit 0
+fi
 mkdir -p "$out_dir"
 summary="$out_dir/camtest_summary.txt"
 # Shared out_dir across per-look calls: append, do not truncate, so BOTH looks' rows
@@ -31,6 +37,7 @@ for cam in "${cams[@]}"; do
   name=$(basename "$cam"); name=${name%.json}; name=${name%.adjusted_state}; name=${name#run-}; name=${name#aligned-}
   img="$img_dir/$name.cub"
   out="$out_dir/$name.json"
+  [ -s "$out" ] && { echo "$name exists, skipping"; continue; }
   if [ ! -f "$img" ]; then echo "$name MISSING_IMAGE $img" | tee -a "$summary"; continue; fi
   # Refit transverse, exact pose, distortion only.
   cam_gen "$img" \

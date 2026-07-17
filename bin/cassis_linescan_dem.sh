@@ -29,6 +29,12 @@ work=${5:?work (linescan output directory)}
 coarse=${6:?coarseCTX (its proj/grid/extent drive every output)}
 [ -s "$coarse" ] || { echo "ERROR missing coarse ctx $coarse"; exit 1; }
 mkdir -p "$work"
+# Idempotent: if the final aligned linescan DEM already exists, there is nothing to do.
+# Checked before the log redirect below, so the message reaches the terminal.
+if [ -s "$work/linescan_dem/align/aligned_oncoarse.tif" ]; then
+  echo "linescan DEM exists, skipping: $work/linescan_dem/align/aligned_oncoarse.tif"
+  exit 0
+fi
 log=$B/output_linescan_${site}.txt
 exec > "$log" 2>&1
 echo "START $(date) host=$(uname -n) site=$site"

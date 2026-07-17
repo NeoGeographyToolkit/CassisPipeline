@@ -24,8 +24,14 @@ set -e
 # Run this from your work directory. See the repository README.
 
 pairDir=$1; data=$2; sid=$3; state=$4; look=$5
+out=$pairDir/frame/aligned_framelets/$sid
+# Idempotent: if the aligned framelet states already exist, there is nothing to do.
+if ls "$out"/aligned-*.json >/dev/null 2>&1; then
+  echo "aligned framelets exist, skipping: $out"
+  exit 0
+fi
 [ -s "$state" ] || { echo "ERROR: missing aligned linescan state $state"; exit 1; }
-out=$pairDir/frame/aligned_framelets/$sid; mkdir -p "$out"
+mkdir -p "$out"
 
 # framelet cubes + ISDs, in framelet-index (=time) order
 cubes=$(ls $PWD/$data/L*_$sid/*-$sid-*-0__4_0.cub | sort -t- -k$(echo "$data/L*_$sid" | awk -F/ '{print NF+3}') 2>/dev/null || ls $PWD/$data/L*_$sid/*-$sid-*-0__4_0.cub)
