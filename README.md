@@ -64,6 +64,15 @@ Extract it in the current directory.
 Each command below will be practiced on it. The commands will exit quickly if
 the outputs they are supposed to create already exist.
 
+The sample commands below use these shell variables. Set them once in your shell:
+
+```bash
+pair=jezero/MY36_016378_162                    # the pair directory
+data=data/$pair                                # the framelet data root
+sidL=838849161; sidR=838849162                 # left and right look identifiers
+ctx=ref/jezero_ctx/jez_ctx_expanded_18m.tif    # the coarse CTX reference
+```
+
 ## Data ingestion
 
 ### Download and create the cube files
@@ -84,7 +93,7 @@ cassis_fetch_pair.sh <orbit> <sidL> <sidR> data/<pairDir>
 For the Jezero sample:
 
 ```bash
-cassis_fetch_pair.sh 16378 838849161 838849162 data/jezero/MY36_016378_162
+cassis_fetch_pair.sh 16378 $sidL $sidR $data
 ```
 
 Download the SPICE kernels
@@ -102,7 +111,7 @@ cassis_ingest_cubes.sh data/<pairDir>
 For the Jezero sample:
 
 ```bash
-cassis_ingest_cubes.sh data/jezero/MY36_016378_162
+cassis_ingest_cubes.sh $data
 ```
 
 ### Create the CSM cameras
@@ -121,7 +130,7 @@ cassis_make_cameras.sh data/<pairDir>
 For the Jezero sample:
 
 ```bash
-cassis_make_cameras.sh data/jezero/MY36_016378_162
+cassis_make_cameras.sh $data
 ```
 
 Both ingest and camera scripts scan the per-look subdirectories under the given
@@ -226,8 +235,7 @@ cassis_linescan_dem.sh <label> <dataDir> <sidL> <sidR> <work> <coarseCTX>
 For the Jezero sample:
 
 ```bash
-cassis_linescan_dem.sh jezero data/jezero/MY36_016378_162 838849161 838849162 \
-  jezero/MY36_016378_162/linescan ref/jezero_ctx/jez_ctx_expanded_18m.tif
+cassis_linescan_dem.sh jezero $data $sidL $sidR $pair/linescan $ctx
 ```
 
 Check that the linescan DEM was produced under the work directory. Documented at
@@ -245,8 +253,7 @@ cassis_align_cams.sh <pairDir> <sidL> <sidR> <transform.txt> [label]
 For the Jezero sample:
 
 ```bash
-cassis_align_cams.sh jezero/MY36_016378_162 838849161 838849162 \
-  jezero/MY36_016378_162/linescan/linescan_dem/align/run-transform.txt jezero
+cassis_align_cams.sh $pair $sidL $sidR $pair/linescan/linescan_dem/align/run-transform.txt jezero
 ```
 
 The transform is the `run-transform.txt` written by stage 1 under
@@ -268,10 +275,8 @@ linescan2framelets.sh <pairDir> <dataDir> <sid> <aligned_linescan_state> <look L
 For the Jezero sample, once per look:
 
 ```bash
-linescan2framelets.sh jezero/MY36_016378_162 data/jezero/MY36_016378_162 838849161 \
-  jezero/MY36_016378_162/linescan/linescan_dem/cams_aligned/run-run-838849161_linescan.adjusted_state.json L
-linescan2framelets.sh jezero/MY36_016378_162 data/jezero/MY36_016378_162 838849162 \
-  jezero/MY36_016378_162/linescan/linescan_dem/cams_aligned/run-run-838849162_linescan.adjusted_state.json R
+linescan2framelets.sh $pair $data $sidL $pair/linescan/linescan_dem/cams_aligned/run-run-${sidL}_linescan.adjusted_state.json L
+linescan2framelets.sh $pair $data $sidR $pair/linescan/linescan_dem/cams_aligned/run-run-${sidR}_linescan.adjusted_state.json R
 ```
 
 Check that a frame camera was written per framelet. Documented at
@@ -288,10 +293,8 @@ refit_transverse.sh <cam_dir> <img_dir> <out_dir> [datum]
 For the Jezero sample, once per look, into one shared output directory:
 
 ```bash
-refit_transverse.sh jezero/MY36_016378_162/frame/aligned_framelets/838849161 \
-  data/jezero/MY36_016378_162/L1_838849161 jezero/MY36_016378_162/frame/registered_cassis_cams D_MARS
-refit_transverse.sh jezero/MY36_016378_162/frame/aligned_framelets/838849162 \
-  data/jezero/MY36_016378_162/L2_838849162 jezero/MY36_016378_162/frame/registered_cassis_cams D_MARS
+refit_transverse.sh $pair/frame/aligned_framelets/$sidL $data/L1_$sidL $pair/frame/registered_cassis_cams D_MARS
+refit_transverse.sh $pair/frame/aligned_framelets/$sidR $data/L2_$sidR $pair/frame/registered_cassis_cams D_MARS
 ```
 
 Check the registered, distortion-corrected cameras. Documented at
