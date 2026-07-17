@@ -5,12 +5,12 @@
 # + dz -> dem2gcp @corrRes -> OUTPUT {DEM, cams, new gcp}. Same as cassis_pass.sh minus the linescan bootstrap.
 # Block 1 = cassis_pass.sh (bootstrap + block); block 2..N = cassis_block.sh on the prev block's {cams, gcp}.
 # Reuses cassis_ba.sh / cassis_stereo.sh / cassis_corr.sh / gen_gcp.sh. Self-contained qsub.
-# Args (B LAST): <pairDir> <inImgList> <inCamList> <inGcp> <refdem> <drape> <matchpfx> <Llook> <Rlook>
+# Args (B LAST): <pairDir> <inImgList> <inCamList> <inGcp> <refdem> <mapprojDem> <matchpfx> <Llook> <Rlook>
 #   <mapprojRes> <demRes> <corrRes> <corrSearch> <htUncTic> <htUncToc> <camPosUnc> <robust> <gcpSigma>
 #   <maxGcp> <maxDisp> <geounc> <outTag> <B>
 set +e; umask 022
 pairDir=${1:?pairDir}; inImgList=${2:?inImgList (prev block run-image_list.txt)}; inCamList=${3:?inCamList}
-inGcp=${4:?inGcp (prev block gcp)}; refdem=${5:?refdem}; drape=${6:?drape}; matchpfx=${7:?matchpfx}
+inGcp=${4:?inGcp (prev block gcp)}; refdem=${5:?refdem}; mapprojDem=${6:?mapprojDem}; matchpfx=${7:?matchpfx}
 Llook=${8:?Llook}; Rlook=${9:?Rlook}; mapprojRes=${10:?mapprojRes (NATIVE 4.59)}; demRes=${11:?demRes (18)}
 corrRes=${12:?corrRes (18)}; corrSearch=${13:?corrSearch}; htUncTic=${14:?htUncTic}; htUncToc=${15:?htUncToc}
 camPosUnc=${16:?camPosUnc}; robust=${17:?robust}; gcpSigma=${18:?gcpSigma}; maxGcp=${19:?maxGcp}
@@ -21,7 +21,7 @@ cd "$B" || { echo "ERROR cannot cd $B"; exit 1; }
 log=$B/output_${outTag}_block.txt; exec > "$log" 2>&1
 echo "=== [cassis_block] START $(date) host=$(uname -n) outTag=$outTag (builds on $inImgList) ==="
 echo "  inGcp=$inGcp mapprojRes=$mapprojRes demRes=$demRes corrRes=$corrRes htUncTic=$htUncTic htUncToc=$htUncToc"
-for f in "$inImgList" "$inCamList" "$inGcp" "$refdem" "$drape"; do [ -s "$f" ] || { echo "ERROR missing $f"; exit 1; }; done
+for f in "$inImgList" "$inCamList" "$inGcp" "$refdem" "$mapprojDem"; do [ -s "$f" ] || { echo "ERROR missing $f"; exit 1; }; done
 G=$pairDir/frame/$outTag; mkdir -p "$G/dem2gcp"
 
 # === [1] TIC: BA fix-gcp on the input gcp (from the input cams) - horizontal anchor ===
@@ -52,9 +52,9 @@ outImg=$pairDir/frame/$outTag/run-image_list.txt; outCam=$pairDir/frame/$outTag/
 
 # === [3] STEREO: mapproject/correlate NATIVE mapprojRes, point2dem demRes ===
 echo "=== [3/4] STEREO mapproj $mapprojRes DEM $demRes $(date) ==="
-bash cassis_stereo.sh "$pairDir" "$outTag" "$outImg" "$outCam" "$geounc" "$drape" "$refdem" \
+bash cassis_stereo.sh "$pairDir" "$outTag" "$outImg" "$outCam" "$geounc" "$mapprojDem" "$refdem" \
   "$mapprojRes" "$demRes" "$matchpfx" "$Llook" "$Rlook" 0 "$B" || { echo "STAGE_FAIL stereo"; exit 1; }
-dem=$pairDir/frame/${outTag}_stereo/dem_frame_mosaic.tif
+dem=$pairDir/frame/${outTag}_stereo/cassis_dem.tif
 [ -s "$dem" ] || { echo "STAGE_FAIL stereo no DEM $dem"; exit 1; }
 
 # === [4] EVAL corr @corrRes (dd-H/dd-V @that px) + dz, then dem2gcp -> new gcp ===

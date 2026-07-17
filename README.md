@@ -43,8 +43,9 @@ from-scratch run splits in two: the preparation on a kernel-equipped workstation
 Kept short here on purpose. The exact packages and conda environments are in the
 ASP CaSSIS documentation.
 
-- **Ames Stereo Pipeline (ASP), a recent build**, from the [releases
-  page](https://github.com/NeoGeographyToolkit/StereoPipeline/releases). It
+- **Ames Stereo Pipeline (ASP), a recent build, from 2026/7 or later**, from the
+  [releases page](https://github.com/NeoGeographyToolkit/StereoPipeline/releases).
+  That build is required, as it carries the CaSSIS camera support. It
   carries its own CaSSIS-capable ISIS, ALE, and USGSCSM, and bundles GNU parallel,
   so a standard ASP install can create the CaSSIS cameras and run the stereo.
 - **A conda environment providing GDAL and PROJ**, for the pairing and evaluation
@@ -104,9 +105,9 @@ this repository. Example copies are in the config directory.
   settings). You normally do not edit it. The lens coefficients are a global
   CaSSIS instrument constant, reused as is for every site.
 - cassis_siteName.conf (for example cassis_jezero.conf) holds the per-site data
-  paths: the pair directory, the CTX reference DEM and its blurred drape, the
-  aligned linescan DEM, the start camera directory, and the left and right look
-  identifiers.
+  paths: the pair directory, the CTX reference DEM and the low-resolution blurred
+  CTX DEM used for mapprojection, the aligned linescan DEM, the start camera
+  directory, and the left and right look identifiers.
 
 Every path in the site config is interpreted relative to the work directory
 unless it is absolute. Copy the two files into your work directory, edit every
@@ -139,15 +140,15 @@ data), which already has stages 0 to 4 done.
 
 ### Stage 0, CTX reference DEM build
 
-Assembles the CTX reference DEM and its blurred drape for the site from existing
-CTX DEMs. Run on the prep host:
+Assembles the CTX reference DEM and the low-resolution blurred CTX DEM used for
+mapprojection for the site from existing CTX DEMs. Run on the prep host:
 
 ```bash
 cassis_ctx_build.sh VENDOR_DTM LAT0 LON0 OUTDIR TAG
 ```
 
-See the script header for the arguments. Check that the reference DEM and drape
-were produced, then set their paths in the site config. Documented at
+See the script header for the arguments. Check that the reference DEM and the
+mapprojection DEM were produced, then set their paths in the site config. Documented at
 [Reference CTX DEM](https://stereopipeline.readthedocs.io/en/latest/examples/cassis.html#cassis-ctx-ref).
 
 ### Stage 1, linescan DEM
@@ -236,9 +237,11 @@ The stages within this group are:
   Documented at
   [Optional refinement](https://stereopipeline.readthedocs.io/en/latest/examples/cassis.html#cassis-refine).
 
-The final DEM is written under the pair directory in the work directory. Compare
-it to the CTX reference with geodiff for the vertical difference and by hillshade
-image correlation for the horizontal registration, as in
+The delivered DEM is `cassis_dem_on_ctx.tif`, under the pair directory in the
+work directory, in `<pairDir>/frame/<runTag>_stereo/`. Beside it are its hillshade,
+the geodiff to CTX, and the max-triangulation-error mosaic. Compare the DEM to the
+CTX reference with geodiff for the vertical difference and by hillshade image
+correlation for the horizontal registration, as in
 [Evaluation](https://stereopipeline.readthedocs.io/en/latest/examples/cassis.html#cassis-eval).
 
 ## Acquisition, from scratch (once per site)
@@ -258,7 +261,7 @@ and preparing the prior CaSSIS DEM used only for comparison
 To let you run and verify the pipeline without redoing acquisition, a reference
 dataset for one site (Jezero) is provided: the framelet cubes and original
 cameras, the registered and distortion-corrected cameras, the coarse linescan DEM
-aligned to CTX, the CTX reference and drape, the site configuration, and the
+aligned to CTX, the CTX reference and the mapprojection DEM, the site configuration, and the
 final DEM with its comparison products. Intermediate stereo and bundle-adjustment
 scratch and the dense matches are excluded, since they are large and regenerated.
 

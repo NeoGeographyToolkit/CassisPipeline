@@ -15,7 +15,7 @@
 #   - cameras come from the BA's run-camera_list.txt (1-1 with the images).
 #   - cross-look pairs = L stems (contain <Llook>) x R stems (contain <Rlook>), a pair exists iff its dense
 #     match file <matchPrefix>-<Lstem>__<Rstem>.match exists. Llook/Rlook/matchPrefix are ARGS.
-#   - drape (BLURRED CTX) is what we mapproject onto; refdem (SHARP high-res CTX = htdem) sets the output
+#   - mapprojDem (BLURRED CTX) is what we mapproject onto; refdem (SHARP high-res CTX = htdem) sets the output
 #     grid/proj + the dz geodiff. TWO DISTINCT CTX inputs, both ARGS - do NOT conflate them.
 # Recipe (fixed, same every stage): --ip-match-radius 20, --min-matches 5 + --ip-per-tile 2000, asp_mgm
 #   subpixel 9, alignment none, point2dem --errorimage --max-valid-triangulation-error 8,
@@ -24,7 +24,7 @@
 # TWO GRIDS (do NOT conflate - the CLAUDE.md stereo-res rule): res = the MAPPROJECT/correlation grid,
 # ALWAYS NATIVE ~4.59 m (mapproj at a coarse grid blurs the framelets before correlation = a blocky
 # junk DEM). demRes = the point2dem/DEM/mosaic/tri-err grid (e.g. 18 m). Correlation native, DEM coarse.
-# Args (B LAST): <pairDir> <tag> <imgList> <camList> <geounc> <drape> <refdem> <res> <demRes>
+# Args (B LAST): <pairDir> <tag> <imgList> <camList> <geounc> <mapprojDem> <refdem> <res> <demRes>
 #   <matchPrefix> <Llook> <Rlook> <num_matches_from_disp> <B>
 set +e
 umask 022
@@ -33,7 +33,7 @@ tag=${2:?tag required (names the output dir <pairDir>/frame/<tag>_stereo)}
 imgList=${3:?imgList required (INPUT arg: BA run-image_list.txt, 1-1 with camList)}
 camList=${4:?camList required (INPUT arg: BA run-camera_list.txt)}
 geounc=${5:?geounc required (mapproj-geolocation-uncertainty px)}
-drape=${6:?drape required (BLURRED CTX to mapproject onto)}
+mapprojDem=${6:?mapprojDem required (BLURRED CTX to mapproject onto)}
 refdem=${7:?refdem required (SHARP high-res CTX = htdem; grid/proj + dz geodiff)}
 res=${8:?res required (MAPPROJECT/correlation grid m, NATIVE ~4.59 - never coarse)}
 demRes=${9:?demRes required (point2dem/DEM/mosaic grid m, e.g. 18)}
@@ -48,7 +48,7 @@ cd "$B" || { echo "ERROR cannot cd $B"; exit 1; }
 out=$pairDir/frame/${tag}_stereo; mkdir -p "$out/stereo" "$out/maps"
 log=$B/output_${tag}_stereo.txt; exec > "$log" 2>&1
 echo "=== [cassis_stereo] START $(date) host=$(uname -n) tag=$tag geounc=$geounc mapprojRes=$res demRes=$demRes ==="
-echo "  drape=$drape refdem=$refdem matchPrefix=$matchPrefix Llook=$Llook Rlook=$Rlook num_matches_from_disp=$num_matches_from_disp"
+echo "  mapprojDem=$mapprojDem refdem=$refdem matchPrefix=$matchPrefix Llook=$Llook Rlook=$Rlook num_matches_from_disp=$num_matches_from_disp"
 
 # geounc <-> mode guard (fail fast). DEM mode (num_matches_from_disp==0, runs point2dem) MUST have
 # geounc=0: a nonzero collar there grows the mask into one-image ground and causes SEAMS. DENSE mode
@@ -64,7 +64,7 @@ fi
 [ -s "$imgList" ] && [ -s "$camList" ] || { echo "ERROR missing lists $imgList / $camList"; exit 1; }
 nI=$(wc -l < "$imgList"); nC=$(wc -l < "$camList")
 [ "$nI" = "$nC" ] || { echo "ERROR image/camera count $nI != $nC"; exit 1; }
-[ -s "$drape" ]  || { echo "ERROR missing drape $drape"; exit 1; }
+[ -s "$mapprojDem" ]  || { echo "ERROR missing mapprojDem $mapprojDem"; exit 1; }
 [ -s "$refdem" ] || { echo "ERROR missing refdem $refdem"; exit 1; }
 
 # PROJ + extent from the sharp refdem (do NOT hardcode - read from the DEM).
@@ -79,7 +79,7 @@ cam_of(){
   [ -n "$i" ] && sed -n "${i}p" "$camList" 2>/dev/null
 }
 
-# --- 1. mapproject each framelet (from the BA image list) with its BA cam onto the drape (parallel pool) ---
+# --- 1. mapproject each framelet (from the BA image list) with its BA cam onto the mapprojDem (parallel pool) ---
 THR=$(nproc 2>/dev/null || echo 8); [ "$THR" -gt 128 ] && THR=128
 MK=$(( THR > 8 ? 8 : THR )); [ "$MK" -lt 1 ] && MK=1; MT=$(( THR / MK )); [ "$MT" -lt 1 ] && MT=1; [ "$MT" -gt 8 ] && MT=8
 map_one(){
@@ -87,7 +87,7 @@ map_one(){
   nm=$(basename "${c%.cub}"); cam=$(cam_of "$nm")
   [ -s "$cam" ] || { echo "  no BA cam for $nm"; return 0; }
   [ -s "$out/maps/$nm.tif" ] && return 0
-  mapproject --threads $MT --tr $res "$drape" "$c" "$cam" "$out/maps/$nm.tif" >/dev/null 2>&1 \
+  mapproject --threads $MT --tr $res "$mapprojDem" "$c" "$cam" "$out/maps/$nm.tif" >/dev/null 2>&1 \
     || echo "  mapproj FAIL $nm"
   return 0
 }
@@ -111,7 +111,7 @@ write_pair_env(){
   cat > "$out/pair.env" <<ENV
 out='$out'
 geounc='$geounc'
-drape='$drape'
+mapprojDem='$mapprojDem'
 nmd='$num_matches_from_disp'
 PROJ='$PROJ'
 demRes='$demRes'
@@ -241,24 +241,24 @@ if items:
 nd=$(echo "$dems" | wc -w | tr -d ' ')
 echo "=== [4] dem_mosaic $nd per-pair DEMs (blunders filtered) -> frame DEM ==="
 [ "$nd" -gt 0 ] || { echo "ERROR no per-pair DEMs to mosaic"; exit 1; }
-mos=$out/dem_frame_mosaic
+mos=$out/cassis_dem
 dem_mosaic $dems --t_srs "$PROJ" --tr $demRes -o ${mos}.tif > $out/mosaic.log 2>&1 \
   || { echo "MOSAIC FAILED"; tail -5 $out/mosaic.log; exit 1; }
 # ALWAYS -r cubicspline, never the gdalwarp default nearest-neighbor (nearest snaps/misregisters
 # a continuous DEM by up to half a pixel). CLAUDE.md rule.
-gdalwarp -q -overwrite -t_srs "$PROJ" -te $TE -tr $demRes $demRes -r cubicspline ${mos}.tif ${mos}_onctx.tif \
-  || echo "  WARN onctx regrid failed (set PROJ_LIB, redo by hand)"
-gdaldem hillshade -az 300 -alt 25 -compute_edges ${mos}_onctx.tif ${mos}_onctx_hs.tif >/dev/null 2>&1 || true
-geodiff ${mos}_onctx.tif "$refdem" -o ${mos}_ctxdiff >/dev/null 2>&1 || true
+gdalwarp -q -overwrite -t_srs "$PROJ" -te $TE -tr $demRes $demRes -r cubicspline ${mos}.tif ${mos}_on_ctx.tif \
+  || echo "  WARN on_ctx regrid failed (set PROJ_LIB, redo by hand)"
+gdaldem hillshade -az 300 -alt 25 -compute_edges ${mos}_on_ctx.tif ${mos}_on_ctx_hs.tif >/dev/null 2>&1 || true
+geodiff ${mos}_on_ctx.tif "$refdem" -o ${mos}_ctxdiff >/dev/null 2>&1 || true
 
 # --- 5. max tri-error mosaic (ray self-consistency; same blunder-filtered pairs) ---
 errmos=$out/max_tri_err
 errs=$(echo "$dems" | sed 's/dem-DEM\.tif/dem-IntersectionErr.tif/g')
 dem_mosaic --threads $THR --max $errs --t_srs "$PROJ" --tr $demRes -o ${errmos}.tif >> $out/mosaic.log 2>&1 \
-  && gdalwarp -q -overwrite -t_srs "$PROJ" -te $TE -tr $demRes $demRes -r cubicspline ${errmos}.tif ${errmos}_onctx.tif >/dev/null 2>&1 \
-  && echo "  max tri-error mosaic: ${errmos}_onctx.tif" \
+  && gdalwarp -q -overwrite -t_srs "$PROJ" -te $TE -tr $demRes $demRes -r cubicspline ${errmos}.tif ${errmos}_on_ctx.tif >/dev/null 2>&1 \
+  && echo "  max tri-error mosaic: ${errmos}_on_ctx.tif" \
   || echo "  WARN max_tri_err mosaic skipped"
 
-echo "  frame DEM: ${mos}_onctx.tif"
+echo "  frame DEM: ${mos}_on_ctx.tif"
 echo "  geodiff std vs CTX (vertical, m): $(gdalinfo -stats ${mos}_ctxdiff-diff.tif 2>/dev/null | grep STATISTICS_STDDEV | sed 's/.*=//')"
 echo "CASSIS_STEREO_DONE $pairDir $tag $(date)"

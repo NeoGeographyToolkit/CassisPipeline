@@ -4,7 +4,7 @@
 #   dem  = mapprojected stereo (geounc=0) + point2dem  (DEM mode; pairs come from existing match files)
 #   lr   = mapprojected stereo (geounc collar) + --num-matches-from-disparity + copy match  (dense L-R)
 #   same = raw affineepipolar stereo + --num-matches-from-disparity + copy match  (dense same-look L-L/R-R)
-# Args: <mode> <a> <b> <envfile>. The env file sets: out geounc drape nmd PROJ demRes matchPrefix
+# Args: <mode> <a> <b> <envfile>. The env file sets: out geounc mapprojDem nmd PROJ demRes matchPrefix
 #   imgList camList T. This worker sets its own ASP env and caps per-worker threads so a pool of them
 #   does not oversubscribe the node.
 set +e
@@ -37,7 +37,7 @@ case "$mode" in
       --min-matches 5 --ip-per-tile 2000 \
       --mapproj-geolocation-uncertainty $geounc \
       --ip-match-radius 20 \
-      "$out/maps/$a.tif" "$out/maps/$b.tif" "$ca" "$cb" "$od/run" "$drape" > "$od.log" 2>&1 \
+      "$out/maps/$a.tif" "$out/maps/$b.tif" "$ca" "$cb" "$od/run" "$mapprojDem" > "$od.log" 2>&1 \
       || { echo "  STEREO FAIL $a $b"; exit 0; }
     point2dem --errorimage \
       --max-valid-triangulation-error 8 \
@@ -53,7 +53,7 @@ case "$mode" in
       --alignment-method none --stereo-algorithm asp_mgm --subpixel-mode 9 --corr-seed-mode 1 \
       --mapproj-geolocation-uncertainty $geounc \
       --num-matches-from-disparity $nmd --max-disp-spread 120 \
-      "$out/maps/$a.tif" "$out/maps/$b.tif" "$ca" "$cb" "$od/run" "$drape" > "$od.log" 2>&1 \
+      "$out/maps/$a.tif" "$out/maps/$b.tif" "$ca" "$cb" "$od/run" "$mapprojDem" > "$od.log" 2>&1 \
       || { echo "  LR FAIL $a $b"; exit 0; }
     m=$(ls $od/run-disp-*.match 2>/dev/null | head -1); [ -n "$m" ] && cp -f "$m" "$mf" || echo "  NO MATCH lr $a $b"
     ;;

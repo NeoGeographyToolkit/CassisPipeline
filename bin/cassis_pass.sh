@@ -6,12 +6,12 @@
 # mapproject/correlate NATIVE mapprojRes, point2dem demRes; [5] EVAL corr @corrRes -> dd-H/dd-V + dz (this
 # ONE corr also feeds dem2gcp); [6] dem2gcp @corrRes -> GCP1 (next block input). Reuses cassis_ba.sh,
 # cassis_stereo.sh, cassis_corr.sh, gen_gcp.sh. Self-contained under qsub. Compare vs frame/toc1_ht1_stereo.
-# Args (B LAST): <pairDir> <startCamDir> <linescanDEM> <refdem> <drape> <matchpfx> <Llook> <Rlook>
+# Args (B LAST): <pairDir> <startCamDir> <linescanDEM> <refdem> <mapprojDem> <matchpfx> <Llook> <Rlook>
 #   <mapprojRes> <demRes> <corrRes> <corrSearch> <htUncTic> <htUncToc> <camPosUnc> <robust> <gcpSigma>
 #   <maxGcp> <maxDisp> <geounc> <outTag> <B>
 set +e; umask 022
 pairDir=${1:?pairDir}; startCamDir=${2:?startCamDir (start cams)}; linescanDEM=${3:?linescan aligned DEM}
-refdem=${4:?refdem (SHARP CTX)}; drape=${5:?drape (BLURRED CTX)}; matchpfx=${6:?matchpfx}
+refdem=${4:?refdem (SHARP CTX)}; mapprojDem=${5:?mapprojDem (BLURRED CTX)}; matchpfx=${6:?matchpfx}
 Llook=${7:?Llook}; Rlook=${8:?Rlook}; mapprojRes=${9:?mapprojRes (NATIVE 4.59)}; demRes=${10:?demRes (18)}
 corrRes=${11:?corrRes (18)}; corrSearch=${12:?corrSearch}; htUncTic=${13:?htUncTic}; htUncToc=${14:?htUncToc}
 camPosUnc=${15:?camPosUnc}; robust=${16:?robust}; gcpSigma=${17:?gcpSigma}; maxGcp=${18:?maxGcp}
@@ -24,7 +24,7 @@ echo "  pairDir=$pairDir startCamDir=$startCamDir linescanDEM=$linescanDEM"
 echo "  mapprojRes=$mapprojRes demRes=$demRes corrRes=$corrRes corrSearch=$corrSearch"
 echo "  htUncTic=$htUncTic htUncToc=$htUncToc camPosUnc=$camPosUnc robust=$robust gcpSigma=$gcpSigma"
 
-for f in "$linescanDEM" "$refdem" "$drape"; do [ -s "$f" ] || { echo "ERROR missing $f"; exit 1; }; done
+for f in "$linescanDEM" "$refdem" "$mapprojDem"; do [ -s "$f" ] || { echo "ERROR missing $f"; exit 1; }; done
 G=$pairDir/frame/$outTag; mkdir -p "$G/dem2gcp"
 
 # build the start-cam image/camera lists (1-1): each start-cam .json + its matching cub
@@ -65,9 +65,9 @@ outImg=$pairDir/frame/$outTag/run-image_list.txt; outCam=$pairDir/frame/$outTag/
 
 # === [4] STEREO: mapproject/correlate NATIVE mapprojRes, point2dem demRes ===
 echo "=== [4/6] STEREO mapproj $mapprojRes DEM $demRes $(date) ==="
-bash cassis_stereo.sh "$pairDir" "$outTag" "$outImg" "$outCam" "$geounc" "$drape" "$refdem" \
+bash cassis_stereo.sh "$pairDir" "$outTag" "$outImg" "$outCam" "$geounc" "$mapprojDem" "$refdem" \
   "$mapprojRes" "$demRes" "$matchpfx" "$Llook" "$Rlook" 0 "$B" || { echo "STAGE_FAIL stereo"; exit 1; }
-dem=$pairDir/frame/${outTag}_stereo/dem_frame_mosaic.tif
+dem=$pairDir/frame/${outTag}_stereo/cassis_dem.tif
 [ -s "$dem" ] || { echo "STAGE_FAIL stereo produced no DEM $dem"; exit 1; }
 
 # === [5] EVAL corr @corrRes (dd-H/dd-V) + dz. This ONE corr also feeds dem2gcp in [6]. ===

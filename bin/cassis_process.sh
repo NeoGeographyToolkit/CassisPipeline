@@ -4,7 +4,7 @@
 # stage number, and TIMED (every heavy stage prints START/DONE + elapsed via `date`). No figures.
 #
 # STAGES (run stage k iff fromStage <= k <= toStage; each skips cheaply if its output already exists):
-#   0  CTX reference build        cassis_ctx_build.sh          -> refdem + drape   [PREP]
+#   0  CTX reference build        cassis_ctx_build.sh          -> refdem + mapprojDem   [PREP]
 #   1  linescan DEM               cassis_linescan_dem.sh       -> ls stereo DEM    [PREP, needs kernels]
 #   2  align linescan -> CTX      cassis_align_cams.sh         -> cams_aligned states [PREP]
 #   3  aligned framelets         linescan2framelets.sh        -> frame/aligned_framelets [PREP]
@@ -18,7 +18,7 @@
 # workstation with the kernels; stages 5-8 are the compute-heavy part, for a cluster or compute node. A
 # fresh site runs 0-4 on the prep host, then 5-8 on the compute node. For a site whose prep is already on
 # disk, just run `cassis_process.sh <conf> 5 8 <B>` on the compute node.
-# The final delivered DEM = <pairDir>/frame/siteName_runTag2_stereo/dem_frame_mosaic.tif (+ _onctx.tif).
+# The final delivered DEM = <pairDir>/frame/siteName_runTag2_stereo/cassis_dem.tif (+ _on_ctx.tif).
 #
 # Usage:  cassis_process.sh <site.conf> <fromStage> <toStage> <tagBase> <B>
 #   e.g.  cassis_process.sh cassis_ox1.conf 5 8 runTag /path/to/workdir
@@ -47,8 +47,22 @@ refitCamDir=$pairDir/frame/registered_cassis_cams     # stage-5 apply-distortion
 log=$B/output_${nick}_process_${fromStage}_${toStage}.txt; exec > "$log" 2>&1
 echo "########## cassis_process START $(date) host=$(uname -n) nick=$nick stages $fromStage..$toStage ##########"
 echo "  cfg=$cfg pairDir=$pairDir"
-echo "  refdem=$refdem drape=$drape startCamDir=$startCamDir LL=$Llook RL=$Rlook"
+echo "  refdem=$refdem mapprojDem=$mapprojDem startCamDir=$startCamDir LL=$Llook RL=$Rlook"
 echo "  optimized_distortion(c0)=$(echo $optimized_distortion | awk '{print $1}') refitPosUnc=$refitPosUnc num_matches_from_disp=$num_matches_from_disp denseGeounc=$denseGeounc geounc=$geounc"
+
+# The heavy stages (5+) need a recent ASP. Require a build from 2026/7 or later
+# (2026-07-10 is the build validated on CaSSIS). Older builds lack CaSSIS support.
+if [ "$toStage" -ge 5 ]; then
+  minAspBuild=20260710
+  aspBuild=$(parallel_stereo --version 2>/dev/null | awk '/Build date:/ {gsub(/-/,"",$3); print $3; exit}')
+  if [ -z "$aspBuild" ]; then
+    echo "ERROR: cannot read the ASP build date. Is ASP on PATH? Try: parallel_stereo --version"; exit 1
+  fi
+  if [ "$aspBuild" -lt "$minAspBuild" ]; then
+    echo "ERROR: ASP build $aspBuild is older than the required $minAspBuild (2026/7). CaSSIS needs a newer ASP."; exit 1
+  fi
+  echo "  ASP build $aspBuild (>= $minAspBuild required)"
+fi
 
 want(){ [ "$1" -ge "$fromStage" ] && [ "$1" -le "$toStage" ]; }   # run stage $1 ?
 t0all=$(date +%s)
@@ -61,8 +75,8 @@ stage_done(){ echo "===== STAGE $1 DONE $(date) (elapsed $(( $(date +%s) - $3 ))
 # needs a PREP output that is missing, it hard-errors telling you to run the prep stage on the prep host.
 if want 0; then
   stage_hdr 0 "CTX build (prep)"; t=$(date +%s)
-  if [ -s "$refdem" ] && [ -s "$drape" ]; then echo "  refdem+drape exist - skip ($refdem)";
-  else echo "  PREP: build CTX with cassis_ctx_build.sh on the prep host, then set refdem/drape in $cfg"; fi
+  if [ -s "$refdem" ] && [ -s "$mapprojDem" ]; then echo "  refdem+mapprojDem exist - skip ($refdem)";
+  else echo "  PREP: build CTX with cassis_ctx_build.sh on the prep host, then set refdem/mapprojDem in $cfg"; fi
   stage_done 0 "CTX build" "$t"
 fi
 if want 1; then
@@ -144,7 +158,7 @@ if want 6; then
       echo "$cub" >> "$dimg"; echo "$camf" >> "$dcam"
     done
     # dense mode: geounc is the PRE-BA collar (denseGeounc), NOT the DEM geounc=0
-    bash cassis_stereo.sh "$pairDir" "${nick}_dense" "$dimg" "$dcam" "$denseGeounc" "$drape" "$refdem" \
+    bash cassis_stereo.sh "$pairDir" "${nick}_dense" "$dimg" "$dcam" "$denseGeounc" "$mapprojDem" "$refdem" \
       "$mapprojRes" "$demRes" "$matchpfx" "$Llook" "$Rlook" "$num_matches_from_disp" "$B" \
       || { echo "STAGE6_FAIL dense (see output_${nick}_dense_stereo.txt)"; exit 1; }
     nm=$(ls "$B"/$matchpfx-*.match 2>/dev/null | wc -l | tr -d ' ')
@@ -156,7 +170,7 @@ fi
 # ============================ STAGE 7: pass1 (heavy) ============================
 if want 7; then
   stage_hdr 7 "pass1"; t=$(date +%s)
-  p1dem=$pairDir/frame/${nick}_${tagBase}1_stereo/dem_frame_mosaic.tif
+  p1dem=$pairDir/frame/${nick}_${tagBase}1_stereo/cassis_dem.tif
   if [ -s "$p1dem" ]; then echo "  pass1 DEM exists - skip ($p1dem)";
   else
     bash cassis_run.sh "$cfg" pass1 "$tagBase" "$B" || { echo "STAGE7_FAIL pass1"; exit 1; }
@@ -169,14 +183,14 @@ fi
 # ============================ STAGE 8: pass2 -> FINAL DEM (heavy) ============================
 if want 8; then
   stage_hdr 8 "pass2 (FINAL)"; t=$(date +%s)
-  p2dem=$pairDir/frame/${nick}_${tagBase}2_stereo/dem_frame_mosaic.tif
+  p2dem=$pairDir/frame/${nick}_${tagBase}2_stereo/cassis_dem.tif
   if [ -s "$p2dem" ]; then echo "  pass2 DEM exists - skip ($p2dem)";
   else
     bash cassis_run.sh "$cfg" pass2 "$tagBase" "$B" || { echo "STAGE8_FAIL pass2"; exit 1; }
   fi
   [ -s "$p2dem" ] || { echo "STAGE8_FAIL pass2 no DEM $p2dem"; exit 1; }
   echo "  FINAL DEM: $p2dem"
-  echo "  FINAL DEM onctx: ${p2dem%.tif}_onctx.tif"
+  echo "  FINAL DEM on_ctx: ${p2dem%.tif}_on_ctx.tif"
   stage_done 8 "pass2" "$t"
 fi
 
