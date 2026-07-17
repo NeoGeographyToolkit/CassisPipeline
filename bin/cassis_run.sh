@@ -24,21 +24,24 @@ nick=$(basename "$cfg" .conf | sed 's/^cassis_//; s/_site$//')
 source "$B/cassis_common.conf"
 source "$B/$cfg"
 matchpfx=${matchpfx:-$pairDir/frame/dense/matches/run-disp}   # uniform; a config MAY override
-pass2TocGcp=${pass2TocGcp:-no_gcp}   # pass2 TOC gcp mode (no_gcp default; soft_gcp per site)
+pass2Gcp=${pass2Gcp:-no_gcp}   # pass2 TOC gcp mode (no_gcp default; soft_gcp per site)
+# linescanDem and startCamDir are derived from pairDir by convention (a config MAY override).
+startCamDir=${startCamDir:-$pairDir/frame/distortion_corrected_cassis_cams}
+linescanDem=${linescanDem:-$pairDir/linescan/linescan_dem/align/aligned_oncoarse.tif}
 
 # validate every var is set (no silent default) + inputs exist
-for v in pairDir refdem mapprojDem linescanDEM startCamDir Llook Rlook matchpfx \
-         mapprojRes demRes corrRes corrSearch htUncTic htUncToc camPosUnc robust gcpSigma maxGcp maxDisp geounc; do
+for v in pairDir refDem mapprojDem linescanDem startCamDir Llook Rlook matchpfx \
+         mapprojRes demRes corrRes corrSearch htUncLoose htUncTight camPosUnc robust gcpSigma maxGcp maxDisp geounc; do
   eval "val=\$$v"; [ -n "$val" ] || { echo "ERROR config var $v is UNSET"; exit 1; }
 done
-for f in "$refdem" "$mapprojDem" "$linescanDEM"; do [ -s "$f" ] || { echo "ERROR missing input $f"; exit 1; }; done
+for f in "$refDem" "$mapprojDem" "$linescanDem"; do [ -s "$f" ] || { echo "ERROR missing input $f"; exit 1; }; done
 ncam=$(ls "$startCamDir"/*.json 2>/dev/null | wc -l | tr -d ' ')
 [ "${ncam:-0}" -ge 2 ] || { echo "ERROR too few start cams in $startCamDir ($ncam)"; exit 1; }
 
 log=$B/output_${nick}_${tagBase}_${stage}_run.txt; exec > "$log" 2>&1
 echo "=== [cassis_run] START $(date) host=$(uname -n) nick=$nick site=$pairDir stage=$stage ==="
-echo "  cfg=$cfg  GEO=$geounc MPR=$mapprojRes DR=$demRes CR=$corrRes CS=$corrSearch HTIC=$htUncTic HTOC=$htUncToc CPU=$camPosUnc ROB=$robust GS=$gcpSigma MG=$maxGcp MD=$maxDisp"
-echo "  refdem=$refdem mapprojDem=$mapprojDem linescanDEM=$linescanDEM startCamDir=$startCamDir ($ncam cams) LL=$Llook RL=$Rlook"
+echo "  cfg=$cfg  GEO=$geounc MPR=$mapprojRes DR=$demRes CR=$corrRes CS=$corrSearch HTIC=$htUncLoose HTOC=$htUncTight CPU=$camPosUnc ROB=$robust GS=$gcpSigma MG=$maxGcp MD=$maxDisp"
+echo "  refDem=$refDem mapprojDem=$mapprojDem linescanDem=$linescanDem startCamDir=$startCamDir ($ncam cams) LL=$Llook RL=$Rlook"
 
 # Dense matches are emitted full-name by cassis_stereo.sh DENSE mode (imgList = full-name cams), so
 # the BA and dem2gcp find them directly - no short->full conversion step.
@@ -46,8 +49,8 @@ echo "  refdem=$refdem mapprojDem=$mapprojDem linescanDEM=$linescanDEM startCamD
 if [ "$stage" = pass1 ]; then
   outTag=${nick}_${tagBase}1
   echo "===== pass1 outTag=$outTag $(date) ====="
-  bash cassis_pass.sh "$pairDir" "$startCamDir" "$linescanDEM" "$refdem" "$mapprojDem" "$matchpfx" "$Llook" "$Rlook" \
-    "$mapprojRes" "$demRes" "$corrRes" "$corrSearch" "$htUncTic" "$htUncToc" "$camPosUnc" "$robust" "$gcpSigma" \
+  bash cassis_pass.sh "$pairDir" "$startCamDir" "$linescanDem" "$refDem" "$mapprojDem" "$matchpfx" "$Llook" "$Rlook" \
+    "$mapprojRes" "$demRes" "$corrRes" "$corrSearch" "$htUncLoose" "$htUncTight" "$camPosUnc" "$robust" "$gcpSigma" \
     "$maxGcp" "$maxDisp" "$geounc" "$outTag" "$B" || { echo "PASS1_FAIL (see output_${outTag}_pass.txt)"; exit 1; }
 elif [ "$stage" = pass2 ]; then
   p1Tag=${nick}_${tagBase}1; outTag=${nick}_${tagBase}2
@@ -56,9 +59,9 @@ elif [ "$stage" = pass2 ]; then
   P1GCP=$pairDir/frame/${p1Tag}/dem2gcp/gcp1.gcp
   for f in "$P1IMG" "$P1CAM" "$P1GCP"; do [ -s "$f" ] || { echo "PASS1 output missing $f - run pass1 first"; exit 1; }; done
   echo "===== pass2 outTag=$outTag (builds on $p1Tag: img=$(wc -l <"$P1IMG") cam=$(wc -l <"$P1CAM") gcp=$(grep -vc '^#' "$P1GCP")) $(date) ====="
-  bash cassis_block.sh "$pairDir" "$P1IMG" "$P1CAM" "$P1GCP" "$refdem" "$mapprojDem" "$matchpfx" "$Llook" "$Rlook" \
-    "$mapprojRes" "$demRes" "$corrRes" "$corrSearch" "$htUncTic" "$htUncToc" "$camPosUnc" "$robust" "$gcpSigma" \
-    "$maxGcp" "$maxDisp" "$geounc" "$outTag" "$pass2TocGcp" "$B" || { echo "PASS2_FAIL (see output_${outTag}_block.txt)"; exit 1; }
+  bash cassis_block.sh "$pairDir" "$P1IMG" "$P1CAM" "$P1GCP" "$refDem" "$mapprojDem" "$matchpfx" "$Llook" "$Rlook" \
+    "$mapprojRes" "$demRes" "$corrRes" "$corrSearch" "$htUncLoose" "$htUncTight" "$camPosUnc" "$robust" "$gcpSigma" \
+    "$maxGcp" "$maxDisp" "$geounc" "$outTag" "$pass2Gcp" "$B" || { echo "PASS2_FAIL (see output_${outTag}_block.txt)"; exit 1; }
 else
   echo "ERROR unknown stage '$stage' (want pass1|pass2)"; exit 1
 fi

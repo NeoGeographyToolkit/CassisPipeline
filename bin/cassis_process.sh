@@ -4,7 +4,7 @@
 # stage number, and TIMED (every heavy stage prints START/DONE + elapsed via `date`). No figures.
 #
 # STAGES (run stage k iff fromStage <= k <= toStage; each skips cheaply if its output already exists):
-#   0  CTX reference build        cassis_ctx_build.sh          -> refdem + mapprojDem   [PREP]
+#   0  CTX reference build        cassis_ctx_build.sh          -> refDem + mapprojDem   [PREP]
 #   1  linescan DEM               cassis_linescan_dem.sh       -> ls stereo DEM    [PREP, needs kernels]
 #   2  align linescan -> CTX      cassis_align_cams.sh         -> cams_aligned states [PREP]
 #   3  aligned framelets         linescan2framelets.sh        -> frame/aligned_framelets [PREP]
@@ -48,13 +48,16 @@ nick=$(basename "$cfg" .conf | sed 's/^cassis_//; s/_site$//')
 source "$B/cassis_common.conf"
 source "$B/$cfg"
 matchpfx=${matchpfx:-$pairDir/frame/dense/matches/run-disp}
-# DERIVED per-site paths (uniform conventions; not config knobs)
+# DERIVED per-site paths (uniform conventions; not config knobs). linescanDem and startCamDir
+# are derived from pairDir; a site config MAY still override them, but normally does not set them.
 refitCamDir=$pairDir/frame/registered_cassis_cams     # stage-5 apply-distortion input + stage-6 dense cams (full names)
+startCamDir=${startCamDir:-$pairDir/frame/distortion_corrected_cassis_cams}   # stage-5 output start cams
+linescanDem=${linescanDem:-$pairDir/linescan/linescan_dem/align/aligned_oncoarse.tif}  # stage-1 aligned linescan DEM
 
 log=$B/output_${nick}_process_${fromStage}_${toStage}.txt; exec > "$log" 2>&1
 echo "########## cassis_process START $(date) host=$(uname -n) nick=$nick stages $fromStage..$toStage ##########"
 echo "  cfg=$cfg pairDir=$pairDir"
-echo "  refdem=$refdem mapprojDem=$mapprojDem startCamDir=$startCamDir LL=$Llook RL=$Rlook"
+echo "  refDem=$refDem mapprojDem=$mapprojDem startCamDir=$startCamDir LL=$Llook RL=$Rlook"
 echo "  optimized_distortion(c0)=$(echo $optimized_distortion | awk '{print $1}') refitPosUnc=$refitPosUnc num_matches_from_disp=$num_matches_from_disp denseGeounc=$denseGeounc geounc=$geounc"
 
 # The heavy stages (5+) need a recent, CaSSIS-capable ASP, guarded by build date. Date is the
@@ -89,32 +92,32 @@ stage_done(){ echo "===== STAGE $1 DONE $(date) (elapsed $(( $(date +%s) - $3 ))
 # needs a PREP output that is missing, it hard-errors telling you to run the prep stage on the prep host.
 if want 0; then
   stage_hdr 0 "CTX build (prep)"; t=$(date +%s)
-  if [ -s "$refdem" ] && [ -s "$mapprojDem" ]; then echo "  refdem+mapprojDem exist - skip ($refdem)";
-  else echo "  PREP: build CTX with cassis_ctx_build.sh on the prep host, then set refdem/mapprojDem in $cfg"; fi
+  if [ -s "$refDem" ] && [ -s "$mapprojDem" ]; then echo "  refDem+mapprojDem exist - skip ($refDem)";
+  else echo "  PREP: build CTX with cassis_ctx_build.sh on the prep host, then set refDem/mapprojDem in $cfg"; fi
   stage_done 0 "CTX build" "$t"
 fi
 if want 1; then
   stage_hdr 1 "linescan DEM (prep)"; t=$(date +%s)
-  echo "  PREP: cassis_linescan_dem.sh $nick on the prep host (needs SPICE kernels). Output linescan/linescan_dem/stereo/dem-DEM.tif"
+  echo "  PREP: run 'cassis_linescan_dem.sh $cfg $B' on the prep host -> linescan/linescan_dem/align/aligned_oncoarse.tif"
   stage_done 1 "linescan DEM" "$t"
 fi
 if want 2; then
   stage_hdr 2 "align linescan->CTX (prep)"; t=$(date +%s)
-  if [ -s "$linescanDEM" ]; then echo "  aligned linescan DEM exists - skip ($linescanDEM)";
-  else echo "  PREP: cassis_align_cams.sh on the prep host, using the stage-1 transform -> cams_aligned states"; fi
+  if [ -s "$linescanDem" ]; then echo "  aligned linescan DEM exists - skip ($linescanDem)";
+  else echo "  PREP: run 'cassis_align_cams.sh $cfg $B' on the prep host -> cams_aligned states"; fi
   stage_done 2 "align ls->CTX" "$t"
 fi
 if want 3; then
   stage_hdr 3 "aligned framelets (prep)"; t=$(date +%s)
   if [ -d "$pairDir/frame/aligned_framelets" ]; then echo "  aligned framelets exist - skip ($pairDir/frame/aligned_framelets)";
-  else echo "  PREP: linescan2framelets.sh on the prep host -> frame/aligned_framelets"; fi
+  else echo "  PREP: run 'linescan2framelets.sh $cfg $B' on the prep host -> frame/aligned_framelets"; fi
   stage_done 3 "aligned framelets" "$t"
 fi
 if want 4; then
   stage_hdr 4 "refit lens -> transverse (prep)"; t=$(date +%s)
   n4=$(ls "$refitCamDir"/*.json 2>/dev/null | wc -l | tr -d ' ')
   if [ "${n4:-0}" -ge 2 ]; then echo "  registered_cassis_cams has $n4 cams - skip";
-  else echo "  PREP: refit_transverse.sh on the prep host -> $refitCamDir"; fi
+  else echo "  PREP: run 'refit_transverse.sh $cfg $B' on the prep host -> $refitCamDir"; fi
   stage_done 4 "refit transverse" "$t"
 fi
 
@@ -122,12 +125,12 @@ fi
 if want 5; then
   stage_hdr 5 "apply optimized distortion + refit pose"; t=$(date +%s)
   [ -d "$refitCamDir" ] || { echo "STAGE5_FAIL missing $refitCamDir - run prep stage 4 on the prep host"; exit 1; }
-  [ -s "$refdem" ] || { echo "STAGE5_FAIL missing refdem $refdem - run prep stage 0"; exit 1; }
+  [ -s "$refDem" ] || { echo "STAGE5_FAIL missing refDem $refDem - run prep stage 0"; exit 1; }
   nref=$(ls "$refitCamDir"/*.json 2>/dev/null | wc -l | tr -d ' ')
   [ "${nref:-0}" -ge 2 ] || { echo "STAGE5_FAIL too few refit cams ($nref) in $refitCamDir"; exit 1; }
   mkdir -p "$startCamDir"
   NCORE=$( (nproc 2>/dev/null) || echo 28); K=$(( NCORE > 2 ? NCORE : 2 ))
-  echo "  applying optimized distortion to $nref cams (K=$K concurrent) refdem=$refdem posUnc=$refitPosUnc pix=$refitPixSamples"
+  echo "  applying optimized distortion to $nref cams (K=$K concurrent) refDem=$refDem posUnc=$refitPosUnc pix=$refitPixSamples"
   set +e; i=0; done5=0
   for cam in "$refitCamDir"/*.json; do
     [ -e "$cam" ] || continue
@@ -137,7 +140,7 @@ if want 5; then
     cub=$(ls data/$pairDir/L*/$stem.cub 2>/dev/null | head -1)
     [ -s "$cub" ] || { echo "  MISS cub $stem"; continue; }
     cam_gen "$cub" --input-camera "$cam" --csm-refit-pose --distortion-type transverse \
-      --distortion "$optimized_distortion" --camera-position-uncertainty "$refitPosUnc" --reference-dem "$refdem" \
+      --distortion "$optimized_distortion" --camera-position-uncertainty "$refitPosUnc" --reference-dem "$refDem" \
       --datum "$refitDatum" --num-pixel-samples "$refitPixSamples" -o "$out5" > "$out5.camgen.log" 2>&1 &
     i=$((i+1)); [ $((i % K)) -eq 0 ] && wait
   done
@@ -172,7 +175,7 @@ if want 6; then
       echo "$cub" >> "$dimg"; echo "$camf" >> "$dcam"
     done
     # dense mode: geounc is the PRE-BA collar (denseGeounc), NOT the DEM geounc=0
-    bash cassis_stereo.sh "$pairDir" "${nick}_dense" "$dimg" "$dcam" "$denseGeounc" "$mapprojDem" "$refdem" \
+    bash cassis_stereo.sh "$pairDir" "${nick}_dense" "$dimg" "$dcam" "$denseGeounc" "$mapprojDem" "$refDem" \
       "$mapprojRes" "$demRes" "$matchpfx" "$Llook" "$Rlook" "$num_matches_from_disp" "$B" \
       || { echo "STAGE6_FAIL dense (see output_${nick}_dense_stereo.txt)"; exit 1; }
     nm=$(ls "$B"/$matchpfx-*.match 2>/dev/null | wc -l | tr -d ' ')

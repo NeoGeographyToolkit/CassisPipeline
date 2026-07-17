@@ -9,25 +9,28 @@
 # extent drive every output (seed, point2dem, align ref, regrid target). Nothing about
 # grid/proj is hardcoded; grid + proj always agree because they come from one file.
 #
-# Usage: cassis_linescan_dem.sh <label> <dataDir> <sidL> <sidR> <work> <coarseCTX>
+# Usage: cassis_linescan_dem.sh <site.conf> <workdir>
 set -e
 
-# ASP/ISIS tools on PATH and environment (ISIS kernels) are set up by the caller.
-# Run this from your work directory. See the repository README.
+# ASP/ISIS tools on PATH and the environment are set up by the caller. See the README.
 umask 022
-B=$PWD
-cd "$B"
-# The helper python scripts live next to this script (the pipeline bin dir), not
-# in the work dir, so invoke them by their own location, not CWD-relative.
+cfg=${1:?usage: cassis_linescan_dem.sh <site.conf> <workdir>}
+B=${2:?workdir}
+cd "$B" || { echo "ERROR cannot cd $B"; exit 1; }
+# The helper python scripts live next to this script (the pipeline bin dir), so
+# invoke them by their own location, not relative to the work dir.
 BIN=$(cd "$(dirname "$0")" && pwd)
+[ -s "$B/cassis_common.conf" ] && source "$B/cassis_common.conf"
+[ -s "$B/$cfg" ] || { echo "ERROR missing site config $cfg"; exit 1; }
+source "$B/$cfg"
 
-# --- site params: ALL from explicit args, nothing hardcoded ---
-site=${1:?usage: cassis_linescan_dem.sh <label> <dataDir> <sidL> <sidR> <work> <coarseCTX>}
-dataDir=${2:?dataDir (holds L1_<sidL>/ and L2_<sidR>/ framelet cubes)}
-sidL=${3:?sidL}; sidR=${4:?sidR}
-work=${5:?work (linescan output directory)}
-coarse=${6:?coarseCTX (its proj/grid/extent drive every output)}
-[ -s "$coarse" ] || { echo "ERROR missing coarse ctx $coarse"; exit 1; }
+# Everything is derived from the config by convention.
+site=$(basename "$cfg" .conf | sed 's/^cassis_//; s/_site$//')   # nick, for the log name
+dataDir=data/$pairDir
+sidL=$Llook; sidR=$Rlook
+work=$pairDir/linescan
+coarse=$refDem
+[ -s "$coarse" ] || { echo "ERROR missing reference CTX (refDem) $coarse"; exit 1; }
 mkdir -p "$work"
 # Idempotent: if the final aligned linescan DEM already exists, there is nothing to do.
 # Checked before the log redirect below, so the message reaches the terminal.

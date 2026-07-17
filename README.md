@@ -3,15 +3,14 @@
 CaSSIS (Colour and Stereo Surface Imaging System) is the pushframe stereo
 imager on the ExoMars Trace Gas Orbiter.
 
-This repository holds the scripts and a full sample of input and output data.
-These allow precise replication of the process of turning CaSSIS framelet images
-into a digital terrain model (DEM) registered against existing CTX terrain. The
-processing uses the NASA Ames Stereo Pipeline (ASP).
+This repository provides a set of scripts and sample data that allow end-to-end
+replication of the process for turning CaSSIS framelet images into a digital
+terrain model (DEM) registered against an existing CTX terrain. The processing
+uses the NASA Ames Stereo Pipeline (ASP).
 
 The methodology, results, and validation against CTX are described in the [ASP
 documentation page for
 CaSSIS](https://stereopipeline.readthedocs.io/en/latest/examples/cassis.html).
-This README covers how to invoke the pipeline.
 
 ## How the pipeline is organized
 
@@ -25,18 +24,17 @@ cubes, and generate an initial CSM camera per framelet. This needs network
 access and SPICE kernels.
 
 **Tier 2, preparation (light compute).** Build the CTX reference DEM for the
-site from the USGS Astrogeology STAC catalog, build and align a linescan DEM to
-CTX, split into per-framelet frame cameras, and refit a single frozen lens
-distortion. This needs network access.
+site from the USGS Astrogeology STAC catalog, build and align a preliminary
+CaSSIS DEM to CTX, create bundle-adjusted and aligned cameras. This needs
+network access.
 
-**Tier 3, heavy compute.** Apply the corrected lens distortion and refit the
-pose, compute dense interest-point matches, then run bundle adjustment, pairwise
-stereo, blending, and registration to CTX. This part is meant for a multi-core
-machine.
+**Tier 3, heavy compute.** Apply a corrected lens distortion model, compute
+dense interest-point matches, then run bundle adjustment, pairwise stereo, DEM
+blending, and registration to CTX. This part is meant for a multi-core machine.
 
-Because Tiers 1 and 2 need kernels and network while Tier 3 is heavy compute, a
-from-scratch run splits in two: the preparation on a local machine, then the
-heavy stages as a batch job.
+Because Tiers 1 and 2 need kernels and network while Tier 3 is heavy compute, he
+former should be run on a local machine, and the heavy stages should be a batch
+job.
 
 ## Repository layout
 
@@ -53,11 +51,12 @@ Add the bin directory to the PATH.
 
 A reference [Jezero site dataset](https://github.com/NeoGeographyToolkit/CassisPipeline/releases/tag/jezero-reference) is provided.
 
-It has the framelet cubes and original cameras, the registered and
-distortion-corrected cameras, the coarse linescan DEM aligned to CTX, the CTX
-reference and the mapprojection DEM, the site configuration, and the final DEM
-with its comparison products. Intermediate stereo and bundle-adjustment scratch
-and the dense matches are excluded, since they are large and regenerated.
+It has the the site configuration, the framelet cubes, the original CSM cameras,
+the registered and distortion-corrected cameras, the CTX reference DEM, the
+coarser CTX mapprojection DEM, the preliminary CaSSIS linescan DEM aligned to
+CTX, and the final produced CaSSIS DEM with its evaluation products.
+Intermediate stereo, bundle-adjustment, and dense matches data are excluded,
+since they are large and can be regenerated.
 
 Extract it in the current directory.
 
@@ -67,10 +66,9 @@ the outputs they are supposed to create already exist.
 The sample commands below use these shell variables. Set them once in your shell:
 
 ```bash
-pair=jezero/MY36_016378_162                    # the pair directory
-data=data/$pair                                # the framelet data root
-sidL=838849161; sidR=838849162                 # left and right look identifiers
-ctx=ref/jezero_ctx/jez_ctx_expanded_18m.tif    # the coarse CTX reference
+pair=jezero/MY36_016378_162      # the pair directory
+data=data/$pair                  # the framelet data root
+sidL=838849161; sidR=838849162   # left and right look identifiers
 ```
 
 ## Data ingestion
@@ -229,13 +227,13 @@ makes a first DEM, aligned to the coarse CTX reference whose grid and projection
 drive every output. Needs the framelet cubes and cameras from ingestion.
 
 ```bash
-cassis_linescan_dem.sh <label> <dataDir> <sidL> <sidR> <work> <coarseCTX>
+cassis_linescan_dem.sh <site.conf> <workdir>
 ```
 
-For the Jezero sample:
+For the Jezero sample, from inside the unpacked directory:
 
 ```bash
-cassis_linescan_dem.sh jezero $data $sidL $sidR $pair/linescan $ctx
+cassis_linescan_dem.sh cassis_jezero.conf $(pwd)
 ```
 
 Check that the linescan DEM was produced under the work directory. Documented at
@@ -247,21 +245,20 @@ Carries the alignment transform found in stage 1 onto the tied linescan cameras,
 producing the CTX-aligned linescan camera states.
 
 ```bash
-cassis_align_cams.sh <pairDir> <sidL> <sidR> <transform.txt> [label]
+cassis_align_cams.sh <site.conf> <workdir>
 ```
 
 For the Jezero sample:
 
 ```bash
-cassis_align_cams.sh $pair $sidL $sidR $pair/linescan/linescan_dem/align/run-transform.txt jezero
+cassis_align_cams.sh cassis_jezero.conf $(pwd)
 ```
 
-The transform is the `run-transform.txt` written by stage 1 under
-`<pairDir>/linescan/linescan_dem/align/`. Check that the aligned camera states
-were written under `<pairDir>/linescan/linescan_dem/cams_aligned/`. This and
-stage 3 consume stage-1 and stage-2 intermediates, which the sample does not
-ship (they are large and regenerated), so they run only in a from-scratch pass;
-starting from the sample you skip straight to stage 5 with the provided cameras. Documented at
+It finds the stage-1 transform and writes the aligned camera states under
+`<pairDir>/linescan/linescan_dem/cams_aligned/`. This and stage 3 consume stage-1
+and stage-2 intermediates, which the sample does not ship (they are large and
+regenerated), so they run only in a from-scratch pass; starting from the sample
+you skip straight to stage 5 with the provided cameras. Documented at
 [Initial registration](https://stereopipeline.readthedocs.io/en/latest/examples/cassis.html#cassis-init-reg).
 
 ### Stage 3, split into frame cameras
@@ -269,14 +266,13 @@ starting from the sample you skip straight to stage 5 with the provided cameras.
 Splits the registered linescan cameras back into per-framelet frame cameras.
 
 ```bash
-linescan2framelets.sh <pairDir> <dataDir> <sid> <aligned_linescan_state> <look L|R>
+linescan2framelets.sh <site.conf> <workdir>
 ```
 
-For the Jezero sample, once per look:
+For the Jezero sample (both looks in one call):
 
 ```bash
-linescan2framelets.sh $pair $data $sidL $pair/linescan/linescan_dem/cams_aligned/run-run-${sidL}_linescan.adjusted_state.json L
-linescan2framelets.sh $pair $data $sidR $pair/linescan/linescan_dem/cams_aligned/run-run-${sidR}_linescan.adjusted_state.json R
+linescan2framelets.sh cassis_jezero.conf $(pwd)
 ```
 
 Check that a frame camera was written per framelet. Documented at
@@ -287,14 +283,13 @@ Check that a frame camera was written per framelet. Documented at
 Refits a single frozen transverse-distortion model and sets it on the cameras.
 
 ```bash
-refit_transverse.sh <cam_dir> <img_dir> <out_dir> [datum]
+refit_transverse.sh <site.conf> <workdir>
 ```
 
-For the Jezero sample, once per look, into one shared output directory:
+For the Jezero sample (both looks in one call):
 
 ```bash
-refit_transverse.sh $pair/frame/aligned_framelets/$sidL $data/L1_$sidL $pair/frame/registered_cassis_cams D_MARS
-refit_transverse.sh $pair/frame/aligned_framelets/$sidR $data/L2_$sidR $pair/frame/registered_cassis_cams D_MARS
+refit_transverse.sh cassis_jezero.conf $(pwd)
 ```
 
 Check the registered, distortion-corrected cameras. Documented at
