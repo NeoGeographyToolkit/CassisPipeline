@@ -246,15 +246,41 @@ correlation for the horizontal registration, as in
 
 ## Acquisition, from scratch (once per site)
 
-Only needed if you are not starting from a prepared work directory. Download the
-framelets and kernels, ingest to ISIS cubes, and generate the initial cameras.
-Each step is documented in the ASP page:
-[Fetching the framelets](https://stereopipeline.readthedocs.io/en/latest/examples/cassis.html#cassis-fetch),
-[Downloading the SPICE kernels](https://stereopipeline.readthedocs.io/en/latest/examples/cassis.html#cassis-kernels),
-[Ingesting to ISIS cubes](https://stereopipeline.readthedocs.io/en/latest/examples/cassis.html#cassis-ingest),
-[Creating the CaSSIS CSM cameras](https://stereopipeline.readthedocs.io/en/latest/examples/cassis.html#cassis-csm),
-and preparing the prior CaSSIS DEM used only for comparison
-([Prior CaSSIS DEM](https://stereopipeline.readthedocs.io/en/latest/examples/cassis.html#cassis-published-dem)).
+Only needed if you are not starting from a prepared work directory. Three scripts,
+run on the kernel-equipped prep host, download the framelets, ingest them to ISIS
+cubes, and generate the initial cameras. Each links to the matching section of the
+ASP page for what it does and why.
+
+Fetch the calibrated PAN framelets for both looks from the ESA PSA, into
+`data/<pairDir>/L1_<sidL>` and `L2_<sidR>`
+([Fetching the framelets](https://stereopipeline.readthedocs.io/en/latest/examples/cassis.html#cassis-fetch)):
+
+```bash
+cassis_fetch_pair.sh <orbit> <sidL> <sidR> data/<pairDir>
+```
+
+Download the SPICE kernels
+([Downloading the SPICE kernels](https://stereopipeline.readthedocs.io/en/latest/examples/cassis.html#cassis-kernels)),
+then, in the ISIS environment, ingest each framelet to an ISIS cube
+([Ingesting to ISIS cubes](https://stereopipeline.readthedocs.io/en/latest/examples/cassis.html#cassis-ingest)):
+
+```bash
+cassis_ingest_cubes.sh data/<pairDir>
+```
+
+Then, in the separate CaSSIS-capable ALE and USGSCSM environment, generate a CSM
+camera per framelet cube
+([Creating the CaSSIS CSM cameras](https://stereopipeline.readthedocs.io/en/latest/examples/cassis.html#cassis-csm)):
+
+```bash
+cassis_make_cameras.sh data/<pairDir>
+```
+
+The ingest and camera steps use two different conda environments (see the ASP page);
+do not mix them. Both scripts scan the per-look subdirectories under the given data
+root and are idempotent, so a re-run only fills in what is missing. Preparing the
+prior CaSSIS DEM used only for comparison is at
+[Prior CaSSIS DEM](https://stereopipeline.readthedocs.io/en/latest/examples/cassis.html#cassis-published-dem).
 
 ## Reference data
 

@@ -25,6 +25,13 @@
 #   tagBase names the pass1/pass2 output dirs (frame/siteName_<tagBase>1, _<tagBase>2). Reuse an
 #   existing tagBase to RESUME/skip finished passes; pass a FRESH tagBase to force a fresh run.
 set +e; umask 022
+# Make the sibling pipeline scripts (cassis_stereo.sh, cassis_run.sh, cassis_pass.sh, ...)
+# findable no matter how this master is invoked, and whether or not the caller put
+# CassisPipeline/bin on PATH: prepend this script's own directory. It is exported, so the
+# child scripts this launches inherit it and can find their own siblings too. The ASP and
+# ISIS tools must still be on PATH separately (see the README Environment section).
+selfBin=$(cd "$(dirname "$0")" 2>/dev/null && pwd)
+[ -n "$selfBin" ] && export PATH="$selfBin:$PATH"
 cfg=${1:?site config (cassis_siteName.conf)}
 fromStage=${2:?fromStage (0..8)}
 toStage=${3:?toStage (0..8)}
@@ -50,10 +57,17 @@ echo "  cfg=$cfg pairDir=$pairDir"
 echo "  refdem=$refdem mapprojDem=$mapprojDem startCamDir=$startCamDir LL=$Llook RL=$Rlook"
 echo "  optimized_distortion(c0)=$(echo $optimized_distortion | awk '{print $1}') refitPosUnc=$refitPosUnc num_matches_from_disp=$num_matches_from_disp denseGeounc=$denseGeounc geounc=$geounc"
 
-# The heavy stages (5+) need a recent ASP. Require a build from 2026/7 or later
-# (2026-07-10 is the build validated on CaSSIS). Older builds lack CaSSIS support.
+# The heavy stages (5+) need a recent, CaSSIS-capable ASP, guarded by build date. Date is the
+# guard on purpose: a feature probe is too subtle (a feature can be present yet lack the latest
+# fix), and the plan is to keep pushing this floor forward as fixes land. The date is parsed from
+# `parallel_stereo --version` "Build date: YYYY-MM-DD", dashes stripped to a YYYYMMDD integer, so
+# the comparison stays correct across month and YEAR rollovers (a 2027+ build is a larger integer
+# than any 2026 floor).
+# 2026-07-17: floor set to 20260717, the fresh CaSSIS-capable ASP build. (History: was 20260710;
+# briefly relaxed to 20260708 on 2026-07-16 when an l1 respin redeployed a build stamping 07-08,
+# since build date is not monotonic with content; the fresh 2026-07-17 build supersedes it.)
 if [ "$toStage" -ge 5 ]; then
-  minAspBuild=20260710
+  minAspBuild=20260717   # the fresh CaSSIS-capable ASP build; keep pushing forward as fixes land
   aspBuild=$(parallel_stereo --version 2>/dev/null | awk '/Build date:/ {gsub(/-/,"",$3); print $3; exit}')
   if [ -z "$aspBuild" ]; then
     echo "ERROR: cannot read the ASP build date. Is ASP on PATH? Try: parallel_stereo --version"; exit 1

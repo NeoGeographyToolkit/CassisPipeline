@@ -16,8 +16,10 @@ set -e
 cam_dir=$1; img_dir=$2; out_dir=$3; datum=${4:-D_MARS}
 mkdir -p "$out_dir"
 summary="$out_dir/camtest_summary.txt"
-: > "$summary"
-echo "name  center_diff_m  dir_diff_rad  pix_diff_median" | tee -a "$summary"
+# Shared out_dir across per-look calls: append, do not truncate, so BOTH looks' rows
+# survive (this script is invoked once per look with the same out_dir).
+[ -s "$summary" ] || echo "name  center_diff_m  dir_diff_rad  pix_diff_median" > "$summary"
+echo "=== refit $cam_dir -> $out_dir ==="
 # Cameras are the aligned framelets (aligned-<stem>.adjusted_state.json) or
 # run-<X>.adjusted_state.json. name = bare stem either way; img = img_dir/<name>.cub.
 shopt -s nullglob
