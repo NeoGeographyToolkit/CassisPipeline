@@ -24,12 +24,12 @@
 # TWO GRIDS (do NOT conflate - the CLAUDE.md stereo-res rule): res = the MAPPROJECT/correlation grid,
 # ALWAYS NATIVE ~4.59 m (mapproj at a coarse grid blurs the framelets before correlation = a blocky
 # junk DEM). demRes = the point2dem/DEM/mosaic/tri-err grid (e.g. 18 m). Correlation native, DEM coarse.
-# Args (B LAST): <pairDir> <tag> <imgList> <camList> <geounc> <mapprojDem> <refDem> <res> <demRes>
+# Args (B LAST): <outDir> <tag> <imgList> <camList> <geounc> <mapprojDem> <refDem> <res> <demRes>
 #   <matchPrefix> <Llook> <Rlook> <num_matches_from_disp> <B>
 set +e
 umask 022
-pairDir=${1:?pairDir required}
-tag=${2:?tag required (names the output dir <pairDir>/frame/<tag>_stereo)}
+outDir=${1:?outDir required}
+tag=${2:?tag required (names the output dir <outDir>/frame/<tag>_stereo)}
 imgList=${3:?imgList required (INPUT arg: BA run-image_list.txt, 1-1 with camList)}
 camList=${4:?camList required (INPUT arg: BA run-camera_list.txt)}
 geounc=${5:?geounc required (mapproj-geolocation-uncertainty px)}
@@ -45,7 +45,7 @@ num_matches_from_disp=${13:?num_matches_from_disp required (0 = DEM mode: build 
 B=${14:?B required (work base, cd target, LAST)}
 # ASP/ISIS tools on PATH and environment are set up by the caller. See the README.
 cd "$B" || { echo "ERROR cannot cd $B"; exit 1; }
-out=$pairDir/frame/${tag}_stereo; mkdir -p "$out/stereo" "$out/maps"
+out=$outDir/frame/${tag}_stereo; mkdir -p "$out/stereo" "$out/maps"
 log=$B/output_${tag}_stereo.txt; exec > "$log" 2>&1
 echo "=== [cassis_stereo] START $(date) host=$(uname -n) tag=$tag geounc=$geounc mapprojRes=$res demRes=$demRes ==="
 echo "  mapprojDem=$mapprojDem refDem=$refDem matchPrefix=$matchPrefix Llook=$Llook Rlook=$Rlook num_matches_from_disp=$num_matches_from_disp"
@@ -181,7 +181,7 @@ PY
   parallel -j "$Kd" --colsep ' ' --joblog "$out/joblog_same.txt" \
     bash cassis_stereo_pair.sh same {1} {2} "$out/pair.env" < "$out/pairs_same.txt"
   echo "  dense matches emitted: $(ls ${matchPrefix}-*.match 2>/dev/null | wc -l)"
-  echo "CASSIS_STEREO_DONE (dense) $pairDir $tag $(date)"
+  echo "CASSIS_STEREO_DONE (dense) $outDir $tag $(date)"
   exit 0
 fi
 
@@ -261,4 +261,4 @@ dem_mosaic --threads $THR --max $errs --t_srs "$PROJ" --tr $demRes -o ${errmos}.
 
 echo "  frame DEM: ${mos}_on_ctx.tif"
 echo "  geodiff std vs CTX (vertical, m): $(gdalinfo -stats ${mos}_ctxdiff-diff.tif 2>/dev/null | grep STATISTICS_STDDEV | sed 's/.*=//')"
-echo "CASSIS_STEREO_DONE $pairDir $tag $(date)"
+echo "CASSIS_STEREO_DONE $outDir $tag $(date)"

@@ -18,12 +18,13 @@
 # workstation with the kernels; stages 5-8 are the compute-heavy part, for a cluster or compute node. A
 # fresh site runs 0-4 on the prep host, then 5-8 on the compute node. For a site whose prep is already on
 # disk, just run `cassis_process.sh <conf> 5 8 <B>` on the compute node.
-# The final delivered DEM = <pairDir>/frame/siteName_runTag2_stereo/cassis_dem.tif (+ _on_ctx.tif).
+# The final delivered DEM = <outDir>/frame/pass2_stereo/cassis_dem.tif (+ _on_ctx.tif).
 #
-# Usage:  cassis_process.sh <site.conf> <fromStage> <toStage> <tagBase> <B>
-#   e.g.  cassis_process.sh cassis_ox1.conf 5 8 runTag /path/to/workdir
-#   tagBase names the pass1/pass2 output dirs (frame/siteName_<tagBase>1, _<tagBase>2). Reuse an
-#   existing tagBase to RESUME/skip finished passes; pass a FRESH tagBase to force a fresh run.
+# Usage:  cassis_process.sh <site.conf> <fromStage> <toStage> <outDir> <B>
+#   e.g.  cassis_process.sh cassis_ox1.conf 5 8 ox1_out /path/to/workdir
+#   fromStage..toStage is the stage range to run (0..8). outDir is where ALL outputs go (any path,
+#   relative to the workdir or absolute; changes per run). Reuse an existing outDir to RESUME (each
+#   stage skips if its output exists); use a fresh outDir for a clean run.
 set +e; umask 022
 # Make the sibling pipeline scripts (cassis_stereo.sh, cassis_run.sh, cassis_pass.sh, ...)
 # findable no matter how this master is invoked, and whether or not the caller put
@@ -35,7 +36,7 @@ selfBin=$(cd "$(dirname "$0")" 2>/dev/null && pwd)
 cfg=${1:?site config (cassis_siteName.conf)}
 fromStage=${2:?fromStage (0..8)}
 toStage=${3:?toStage (0..8)}
-tagBase=${4:?tagBase (pass output tag base, e.g. runTag; fresh value forces a fresh pass1/pass2)}
+outDir=${4:?outDir (output dir, relative to workdir or absolute; changes per run)}
 B=${5:?work base dir, LAST}
 # The ASP and ISIS tools must be on PATH and the projection/ISIS environment set
 # up beforehand (activate a conda ASP environment, or use a packaged ASP build).
@@ -47,16 +48,27 @@ nick=$(basename "$cfg" .conf | sed 's/^cassis_//; s/_site$//')
 [ -s "$B/$cfg" ] || { echo "ERROR missing site config $cfg"; exit 1; }
 source "$B/cassis_common.conf"
 source "$B/$cfg"
-matchpfx=${matchpfx:-$pairDir/frame/dense/matches/run-disp}
-# DERIVED per-site paths (uniform conventions; not config knobs). linescanDem and startCamDir
-# are derived from pairDir; a site config MAY still override them, but normally does not set them.
-refitCamDir=$pairDir/frame/registered_cassis_cams     # stage-5 apply-distortion input + stage-6 dense cams (full names)
-startCamDir=${startCamDir:-$pairDir/frame/distortion_corrected_cassis_cams}   # stage-5 output start cams
-linescanDem=${linescanDem:-$pairDir/linescan/linescan_dem/align/aligned_oncoarse.tif}  # stage-1 aligned linescan DEM
+source cassis_env_check.sh
+matchpfx=${matchpfx:-$outDir/frame/dense/matches/run-disp}
+# DERIVED output paths (uniform conventions; not config knobs). All outputs live under outDir.
+refitCamDir=$outDir/frame/registered_cassis_cams     # stage-5 apply-distortion input + stage-6 dense cams (full names)
+startCamDir=${startCamDir:-$outDir/frame/distortion_corrected_cassis_cams}   # stage-5 output start cams
+linescanDem=${linescanDem:-$outDir/linescan/linescan_dem/align/aligned_oncoarse.tif}  # stage-1 aligned linescan DEM
+
+# Pre-flight: fail early (before the long run) if the config inputs or required tools are missing.
+if [ "$toStage" -ge 1 ]; then
+  [ -s "$refDem" ] || { echo "ERROR refDem not found: $refDem (check the site config)"; exit 1; }
+  [ -s "$mapprojDem" ] || { echo "ERROR mapprojDem not found: $mapprojDem (check the site config)"; exit 1; }
+  nL=$(cassis_look_cubs "$inputCassisDir" "$Llook" | wc -l | tr -d ' ')
+  nR=$(cassis_look_cubs "$inputCassisDir" "$Rlook" | wc -l | tr -d ' ')
+  [ "${nL:-0}" -ge 1 ] || { echo "ERROR no cubs for Llook=$Llook under inputCassisDir=$inputCassisDir"; exit 1; }
+  [ "${nR:-0}" -ge 1 ] || { echo "ERROR no cubs for Rlook=$Rlook under inputCassisDir=$inputCassisDir"; exit 1; }
+fi
+[ "$toStage" -ge 5 ] && cassis_require bundle_adjust parallel_stereo point2dem mapproject dem_mosaic geodiff gdalwarp gdalinfo gdal_translate cam_gen
 
 log=$B/output_${nick}_process_${fromStage}_${toStage}.txt; exec > "$log" 2>&1
 echo "########## cassis_process START $(date) host=$(uname -n) nick=$nick stages $fromStage..$toStage ##########"
-echo "  cfg=$cfg pairDir=$pairDir"
+echo "  cfg=$cfg outDir=$outDir"
 echo "  refDem=$refDem mapprojDem=$mapprojDem startCamDir=$startCamDir LL=$Llook RL=$Rlook"
 echo "  optimized_distortion(c0)=$(echo $optimized_distortion | awk '{print $1}') refitPosUnc=$refitPosUnc num_matches_from_disp=$num_matches_from_disp denseGeounc=$denseGeounc geounc=$geounc"
 
@@ -109,7 +121,7 @@ if want 2; then
 fi
 if want 3; then
   stage_hdr 3 "aligned framelets (prep)"; t=$(date +%s)
-  if [ -d "$pairDir/frame/aligned_framelets" ]; then echo "  aligned framelets exist - skip ($pairDir/frame/aligned_framelets)";
+  if [ -d "$outDir/frame/aligned_framelets" ]; then echo "  aligned framelets exist - skip ($outDir/frame/aligned_framelets)";
   else echo "  PREP: run 'linescan2framelets.sh $cfg $B' on the prep host -> frame/aligned_framelets"; fi
   stage_done 3 "aligned framelets" "$t"
 fi
@@ -137,7 +149,7 @@ if want 5; then
     stem=$(basename "$cam" .json)
     out5="$startCamDir/$stem.json"
     [ -s "$out5" ] && { done5=$((done5+1)); continue; }   # resume: skip already-built
-    cub=$(ls data/$pairDir/L*/$stem.cub 2>/dev/null | head -1)
+    cub=$(cassis_cub_for_stem "$inputCassisDir" "$stem")
     [ -s "$cub" ] || { echo "  MISS cub $stem"; continue; }
     cam_gen "$cub" --input-camera "$cam" --csm-refit-pose --distortion-type transverse \
       --distortion "$optimized_distortion" --camera-position-uncertainty "$refitPosUnc" --reference-dem "$refDem" \
@@ -167,15 +179,15 @@ if want 6; then
     echo "  generating dense matches via cassis_stereo.sh DENSE MODE (num_matches_from_disp=$num_matches_from_disp, collar geounc=$denseGeounc)"
     [ -d "$refitCamDir" ] || { echo "STAGE6_FAIL missing $refitCamDir - run prep stage 4"; exit 1; }
     # 1-1 img/cam lists from the transverse refit cams (full names)
-    dimg=$pairDir/frame/dense_images.txt; dcam=$pairDir/frame/dense_cameras.txt; : > "$dimg"; : > "$dcam"
+    dimg=$outDir/frame/dense_images.txt; dcam=$outDir/frame/dense_cameras.txt; : > "$dimg"; : > "$dcam"
     for camf in "$refitCamDir"/*.json; do
       [ -e "$camf" ] || continue; stem=$(basename "$camf" .json)
-      cub=$(ls data/$pairDir/L*/$stem.cub 2>/dev/null | head -1)
+      cub=$(cassis_cub_for_stem "$inputCassisDir" "$stem")
       [ -s "$cub" ] || { echo "  MISS cub $stem"; continue; }
       echo "$cub" >> "$dimg"; echo "$camf" >> "$dcam"
     done
     # dense mode: geounc is the PRE-BA collar (denseGeounc), NOT the DEM geounc=0
-    bash cassis_stereo.sh "$pairDir" "${nick}_dense" "$dimg" "$dcam" "$denseGeounc" "$mapprojDem" "$refDem" \
+    bash cassis_stereo.sh "$outDir" "${nick}_dense" "$dimg" "$dcam" "$denseGeounc" "$mapprojDem" "$refDem" \
       "$mapprojRes" "$demRes" "$matchpfx" "$Llook" "$Rlook" "$num_matches_from_disp" "$B" \
       || { echo "STAGE6_FAIL dense (see output_${nick}_dense_stereo.txt)"; exit 1; }
     nm=$(ls "$B"/$matchpfx-*.match 2>/dev/null | wc -l | tr -d ' ')
@@ -187,10 +199,10 @@ fi
 # ============================ STAGE 7: pass1 (heavy) ============================
 if want 7; then
   stage_hdr 7 "pass1"; t=$(date +%s)
-  p1dem=$pairDir/frame/${nick}_${tagBase}1_stereo/cassis_dem.tif
+  p1dem=$outDir/frame/pass1_stereo/cassis_dem.tif
   if [ -s "$p1dem" ]; then echo "  pass1 DEM exists - skip ($p1dem)";
   else
-    bash cassis_run.sh "$cfg" pass1 "$tagBase" "$B" || { echo "STAGE7_FAIL pass1"; exit 1; }
+    bash cassis_run.sh "$cfg" pass1 "$outDir" "$B" || { echo "STAGE7_FAIL pass1"; exit 1; }
   fi
   [ -s "$p1dem" ] || { echo "STAGE7_FAIL pass1 no DEM $p1dem"; exit 1; }
   echo "  pass1 DEM: $p1dem"
@@ -200,10 +212,10 @@ fi
 # ============================ STAGE 8: pass2 -> FINAL DEM (heavy) ============================
 if want 8; then
   stage_hdr 8 "pass2 (FINAL)"; t=$(date +%s)
-  p2dem=$pairDir/frame/${nick}_${tagBase}2_stereo/cassis_dem.tif
+  p2dem=$outDir/frame/pass2_stereo/cassis_dem.tif
   if [ -s "$p2dem" ]; then echo "  pass2 DEM exists - skip ($p2dem)";
   else
-    bash cassis_run.sh "$cfg" pass2 "$tagBase" "$B" || { echo "STAGE8_FAIL pass2"; exit 1; }
+    bash cassis_run.sh "$cfg" pass2 "$outDir" "$B" || { echo "STAGE8_FAIL pass2"; exit 1; }
   fi
   [ -s "$p2dem" ] || { echo "STAGE8_FAIL pass2 no DEM $p2dem"; exit 1; }
   echo "  FINAL DEM: $p2dem"
