@@ -26,6 +26,9 @@ echo "cassis_corr: in=$in ref=$ref res=$res search=$S out=$out"
 # ASP-processed CaSSIS DEM) and conforming the CTX to it, instead of the reverse. The CaSSIS
 # DEM is the ASP product and is usually the grid we want to preserve. Not done now: in current
 # runs the CaSSIS DEM is already regridded onto the CTX, so this only matters if that changes.
+# IMPORTANT: whichever DEM defines proj/extent, the output must STILL honor the passed-in grid
+# resolution (<res>, normally 18 m). Respect the passed-in grid; never silently adopt a DEM's
+# own native pixel size. This should likely be CHECKED/asserted explicitly.
 gdalsrsinfo -o wkt "$ref" | sed '/^[[:space:]]*$/d' > $out/_srs.wkt
 do_fullwarp(){
   local TE
