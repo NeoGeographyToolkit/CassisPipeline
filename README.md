@@ -141,27 +141,24 @@ the two environments. Preparing the prior CaSSIS DEM used only for comparison is
 
 ## Processing stages
 
-The numbered stages run on the ingested cubes and cameras. They need two things.
+The numbered stages run on the ingested cubes and cameras. Two 
 
-First, a recent ASP release, from 2026/7 or later, from the
-[releases page](https://github.com/NeoGeographyToolkit/StereoPipeline/releases).
-That build is required, as it carries the CaSSIS camera support and its own ISIS.
-It is a self-contained release, unpacked from the releases page, not installed
-through conda; its tool wrappers set ISISROOT automatically.
+First, a recent ASP release is needed, from 2026/7 or later, from the [releases
+page](https://github.com/NeoGeographyToolkit/StereoPipeline/releases). Such a
+recent build has the CaSSIS camera support.
 
-Second, the `usgscsm_cassis` environment from the camera step above, which provides
-gdal and proj. Activate it, and put the pipeline and ASP on the PATH:
+Second, the `usgscsm_cassis` environment from the camera step above should be
+activated. It provides gdal and proj. Activate it, and put the pipeline and ASP on
+the PATH:
 
 ```bash
 conda activate usgscsm_cassis
 export PATH=/path/to/CassisPipeline/bin:/path/to/StereoPipeline/bin:$PATH
 ```
 
-A proj.db not found error is the usual sign that the `usgscsm_cassis` environment
-is not activated. Each script also checks up front that the environment is active
-(CONDA_PREFIX set) and that the tools it needs are on PATH, failing early with a
-clear message. Camera generation uses the environment's own isd_generate, not any
-older copy bundled with ASP.
+Each script also checks up front that the environment is active (CONDA_PREFIX
+set) and that the tools it needs are on PATH. Camera generation uses the
+environment's own isd_generate, via CONDA_PREFIX.
 
 ### Configuration
 
@@ -294,14 +291,16 @@ submit them as a job and adapt the queue, account, node model, core count, and
 walltime to the target system:
 
 Example for the Jezero site, from inside the unpacked directory (the master prints
-to the terminal and also writes its own log in the work directory; adapt the
-queue, account, node model, core count, and walltime to the target system):
+to the terminal and also writes its own log in the work directory):
 
 ```bash
 qsub -V -N cassis -l select=1:ncpus=28 -l walltime=6:00:00 -j oe -o cassis_qsub.log -- \
   /path/to/CassisPipeline/bin/cassis_process.sh \
-  cassis_jezero.conf 5 8 jezero_out $(pwd)
+  cassis_jezero.conf 5 7 jezero_out $(pwd)
 ```
+
+This runs through pass 1, which is the delivered DEM. To also run the optional
+pass 2, set the last stage to 8 instead of 7.
 
 The -V flag exports the activated environment (PATH, PROJ_DATA, ISISROOT, and
 the rest) to the compute node, which otherwise starts clean. The worker changes

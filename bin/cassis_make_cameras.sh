@@ -14,6 +14,14 @@
 
 SITE=${1:?usage: cassis_make_cameras.sh <site data root>}
 
+# Use the ACTIVE conda env's own isd_generate (via CONDA_PREFIX), never one that happens to be first
+# on PATH: ASP ships an older isd_generate, and switching envs does not always update PATH, but
+# CONDA_PREFIX is reliable. isd_generate comes from ALE; the usgscsm_cassis env has the CaSSIS-capable
+# ALE. See the README Environment section.
+source cassis_env_check.sh
+cassis_require_ale
+ISD="$CONDA_PREFIX/bin/isd_generate"
+
 n=0; ok=0; miss=0
 for look in "$SITE"/L*_*/; do
   [ -d "$look" ] || continue
@@ -22,11 +30,11 @@ for look in "$SITE"/L*_*/; do
     n=$((n + 1))
     json="${cub%.cub}.json"
     if [ -s "$json" ]; then ok=$((ok + 1)); continue; fi
-    isd_generate -n -o "$json" "$cub"
+    "$ISD" -n -o "$json" "$cub"
     if [ -s "$json" ]; then
       ok=$((ok + 1))
     else
-      echo "MISSING json $(basename "$cub")"
+      echo "MISSING json $(basename "$cub") (if this persists, check the ALE version has CaSSIS support)"
       miss=$((miss + 1))
     fi
   done
