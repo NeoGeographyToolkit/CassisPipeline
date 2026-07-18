@@ -156,10 +156,11 @@ cassis_ctx_build.sh VENDOR_DTM LAT0 LON0 OUTDIR TAG
 ```
 
 See the script header for the arguments. LAT0 and LON0 are the site center; for
-Jezero they are near latitude 18.4, longitude 77.5. This step needs attention, as
-some sites may lack good prior CTX coverage. Check that both the reference DEM and
-the mapproj DEM were produced, then set *refDem* and *mapprojDem* in the site
-config.
+Jezero they are near latitude 18.4, longitude 77.5. 
+
+This step needs attention, as some sites may lack good prior CTX coverage. Check
+that both the reference DEM and the mapproj DEM were produced, then set *refDem*
+and *mapprojDem* in the site config.
 
 *cassis_ctx_build.sh* produces both the reference DEM and the blurred mapproj
 DEM. See the ASP [Preparation of reference CTX
