@@ -8,7 +8,9 @@
 # cassis_make_cameras.sh. NO `set -u` (conda hooks use unbound vars).
 #   Arg: $1 = site data root; the looks are its L*_* subdirectories.
 SITEDATA=${1:?usage: cassis_ingest_cubes.sh <site data root>}
-source cassis_env_check.sh
+# find our sibling scripts whether we were invoked by path or via PATH (bare name)
+_bin=$(cd "$(dirname "$0")" 2>/dev/null && pwd); case "$0" in */*) : ;; *) _bin=$(cd "$(dirname "$(command -v "$0")")" 2>/dev/null && pwd) ;; esac
+source "$_bin/cassis_env_check.sh"
 cassis_require_isisdata
 cassis_require tgocassis2isis editlab
 LOCK=/tmp/cassis_ingest_$(echo "$SITEDATA" | tr '/' '_').lock

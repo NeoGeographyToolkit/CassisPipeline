@@ -14,27 +14,26 @@ CaSSIS](https://stereopipeline.readthedocs.io/en/latest/examples/cassis.html).
 
 ## How the pipeline is organized
 
-The pipeline runs as numbered, resumable stages. Apart from image and camera
-ingestion, they are driven by a single master script, cassis_process.sh. The
-stages fall into three tiers by what they need.
+The work splits into two tiers.
 
-**Tier 1, acquisition.** Download the calibrated framelet images from the ESA
-Planetary Science Archive, download the published CaSSIS DEM, ingest to ISIS
-cubes, and generate an initial CSM camera per framelet. This needs network
-access and SPICE kernels.
+**Tier 1, data ingestion.** Fetch the calibrated framelet images from the ESA
+Planetary Science Archive, download the published CaSSIS DEM, download the SPICE
+kernels, ingest the framelets to ISIS cubes, generate a CSM camera per framelet,
+build the CTX reference DEM for the site, and make the blurred low-resolution
+mapproj DEM from it. These steps need network access and human inspection, and
+each is its own small tool, so Tier 1 is run on a local machine, by hand. It
+produces the inputs the site config names: the framelet cubs, the cameras,
+`refDem`, and `mapprojDem`.
 
-**Tier 2, preparation (light compute).** Build the CTX reference DEM for the
-site from the USGS Astrogeology STAC catalog, build and align a preliminary
-CaSSIS DEM to CTX, create bundle-adjusted and aligned cameras. This needs
-network access.
+**Tier 2, data processing.** Turn those inputs into the registered CaSSIS DEM:
+build a preliminary linescan DEM and align it to CTX, refit the lens distortion,
+compute dense matches, bundle-adjust, run pairwise stereo, blend, and register to
+CTX. These stages are automatic and need little user input, so they are driven by
+a single master script, `cassis_process.sh`, as numbered stages 1 through 8, and
+usually run on a remote or multi-core machine (a batch job).
 
-**Tier 3, heavy compute.** Apply a corrected lens distortion model, compute
-dense interest-point matches, then run bundle adjustment, pairwise stereo, DEM
-blending, and registration to CTX. This part is meant for a multi-core machine.
-
-Because Tiers 1 and 2 need kernels and network while Tier 3 is heavy compute, the
-former should be run on a local machine, and the heavy stages should be a batch
-job.
+So Tier 1 is the manual, network-and-inspection setup on a local machine, and
+Tier 2 is the automatic processing, normally on a remote machine.
 
 ## Repository layout
 
@@ -82,7 +81,11 @@ refDem=ref/jezero_ctx/jezero_ctx_18m.tif             # CTX reference DEM
 mapprojDem=ref/jezero_ctx/jezero_ctx_18m_blur5.tif   # blurred CTX DEM
 ```
 
-## Data ingestion
+## Tier 1: data ingestion
+
+Run on a local machine, with network access and inspection. Each step below is
+its own small tool. Tier 1 produces the inputs the site config names: the framelet
+cubs, the cameras, `refDem`, and `mapprojDem`.
 
 ### Download and create the cube files
 
@@ -134,22 +137,49 @@ Example for the Jezero site:
 
 ```bash
 conda activate usgscsm_cassis
-export ISISDATA=/path/to/isisdata ALESPICEROOT=/path/to/isisdata   # ISIS data tree + ALE metakernel root
+export ISISDATA=/path/to/isisdata       # ISIS data directory
+export ALESPICEROOT=$ISISDATA           # ALE metakernel directory
 cassis_make_cameras.sh $inputCassisDir
 ```
 
 The camera step needs `ISISDATA` (the ISIS data tree) and `ALESPICEROOT` (the ALE
 SPICE root, where `isd_generate` finds the CaSSIS metakernels; no `spiceinit` is
-run). The scripts check these are set and exist and fail early if not.
+run). These are usually set to the same value.
 
 Both ingest and camera scripts scan the per-look subdirectories under the given
 data root and are idempotent, so a re-run only fills in what is missing. Do not mix
 the two environments. Preparing the prior CaSSIS DEM used only for comparison is at
 [Prior CaSSIS DEM](https://stereopipeline.readthedocs.io/en/latest/examples/cassis.html#cassis-published-dem).
 
-## Processing stages
+### Build the CTX reference DEM and the blurred mapproj DEM
 
-The numbered stages run on the ingested cubes and cameras. Two things must be in
+Assemble the CTX reference DEM (`refDem`) for the site from existing CTX DEMs, and
+make the low-resolution blurred mapproj DEM (`mapprojDem`) from it. See the
+[documentation](https://stereopipeline.readthedocs.io/en/latest/examples/cassis.html#cassis-ctx-ref).
+
+```bash
+cassis_ctx_build.sh VENDOR_DTM LAT0 LON0 OUTDIR TAG
+```
+
+See the script header for the arguments. LAT0 and LON0 are the site center; for
+Jezero they are near latitude 18.4, longitude 77.5. This step needs attention, as
+some sites may lack good prior CTX coverage. Check that both the reference DEM and
+the mapproj DEM were produced, then set `refDem` and `mapprojDem` in the site
+config.
+
+`cassis_ctx_build.sh` produces both the reference DEM and the blurred mapproj DEM.
+If you already have the CTX reference DEM and only need the blurred mapproj DEM,
+make it yourself with `dem_mosaic --dem-blur-sigma` (a sigma of 5 is suggested)
+and set `mapprojDem` to the result. This blur is documented in the ASP
+[Preparation of reference CTX DEM](https://stereopipeline.readthedocs.io/en/latest/examples/cassis.html#cassis-ctx-ref)
+section of cassis.rst. `mapprojDem` is a required input for Tier 2.
+
+The Jezero sample already ships the finished `ref/jezero_ctx/*` (the CTX reference
+and the mapproj DEM), so this step is not run for it.
+
+## Tier 2: data processing
+
+The numbered stages (1 through 8) run on the Tier 1 inputs. Two things must be in
 place first.
 
 First, a recent ASP release is needed, from 2026/7 or later, from the [releases
@@ -199,8 +229,8 @@ is nothing to change.
 
 ### Running
 
-With the cubes and cameras from ingestion in place and the CTX built (stage 0,
-below), the master script runs the whole processing chain, stages 1 through 8:
+With the Tier 1 inputs in place (cubs, cameras, `refDem`, `mapprojDem`), the
+master script runs the whole processing chain, stages 1 through 8:
 
 ```bash
 cassis_process.sh cassis_siteName.conf 1 8 outDir /path/to/workdir
@@ -212,33 +242,12 @@ can be any path and changes per run. Reuse an outDir to resume (each stage skips
 outputs that already exist); use a fresh outDir for a clean run. To run or inspect
 one stage at a time, set the same number for both, for example `1 1`, then `2 2`.
 
-Stage 0 (the CTX reference DEM) is a standalone one-time site setup, not part of
-the master's chain; it is described next. Each stage is also documented on its own
-below, so a stage can be run or inspected individually. The quickest way to try
-the pipeline without any preparation is to start from the provided reference
-dataset (see Reference data), which ships the cubes, cameras, and CTX already
-done, so only the heavy stages need running.
-
-### Stage 0, CTX reference DEM creation
-
-Assembles the CTX reference DEM and the low-resolution blurred CTX DEM used for
-mapprojection for the site from existing CTX DEMs. See the
-[documentation](https://stereopipeline.readthedocs.io/en/latest/examples/cassis.html#cassis-ctx-ref).
-
-```bash
-cassis_ctx_build.sh VENDOR_DTM LAT0 LON0 OUTDIR TAG
-```
-
-See the script header for the arguments. LAT0 and LON0 are the site center; for
-Jezero they are near latitude 18.4, longitude 77.5.
-
-This step needs special attention, as some sites may not have prior CTX DEM
-coverage, or not all of it may be of good quality. Check that the reference DEM
-and the mapprojection DEM were produced, then set their paths in the site config.
-
-The Jezero sample already ships the finished `ref/jezero_ctx/*` (the CTX reference
-and the mapprojection DEM), so this step is not run for it. It is only needed when
-building a new site from scratch.
+Each stage is also documented on its own below, so a stage can be run or inspected
+individually. The quickest way to try the pipeline without any preparation is to
+start from the provided reference dataset (see Reference data), which ships the
+cubes, cameras, and CTX already done, so only the processing stages need running.
+The CTX reference DEM and the blurred mapproj DEM are built in Tier 1 (see Build
+the CTX reference DEM and the blurred mapproj DEM), not here.
 
 ### Stage 1, linescan DEM
 
@@ -299,10 +308,9 @@ refit_transverse.sh cassis_jezero.conf jezero_out $(pwd)
 Check the registered, distortion-corrected cameras. Documented at
 [Distortion refit](https://stereopipeline.readthedocs.io/en/latest/examples/cassis.html#cassis-refit).
 
-### Stages 5 to 8, the heavy stages
+### Stages 5 to 8, run as one batch job
 
-These are the compute-intensive part and are meant to be run together as one
-batch job, not one at a time. On a PBS or qsub cluster, for example NASA Pleiades,
+These are meant to be run together as one batch job, not one at a time. On a PBS or qsub cluster, for example NASA Pleiades,
 submit them as a job and adapt the queue, account, node model, core count, and
 walltime to the target system:
 

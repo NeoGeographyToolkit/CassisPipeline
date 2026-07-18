@@ -80,7 +80,11 @@ cam_of(){
 }
 
 # --- 1. mapproject each framelet (from the BA image list) with its BA cam onto the mapprojDem (parallel pool) ---
-THR=$(nproc 2>/dev/null || echo 8); [ "$THR" -gt 128 ] && THR=128
+# core count: prefer $PBS_NODEFILE (the PBS allocation; bare nproc can return 1 inside a
+# job), then nproc --all (ignores affinity/OMP), then a literal fallback.
+THR=$( { [ -r "$PBS_NODEFILE" ] && wc -l < "$PBS_NODEFILE"; } 2>/dev/null || nproc --all 2>/dev/null || echo 8 )
+case "$THR" in ''|*[!0-9]*) THR=8 ;; esac
+[ "$THR" -gt 128 ] && THR=128
 MK=$(( THR > 8 ? 8 : THR )); [ "$MK" -lt 1 ] && MK=1; MT=$(( THR / MK )); [ "$MT" -lt 1 ] && MT=1; [ "$MT" -gt 8 ] && MT=8
 map_one(){
   local c=$1 nm cam

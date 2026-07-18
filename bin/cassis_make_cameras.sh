@@ -18,7 +18,9 @@ SITE=${1:?usage: cassis_make_cameras.sh <site data root>}
 # on PATH: ASP ships an older isd_generate, and switching envs does not always update PATH, but
 # CONDA_PREFIX is reliable. isd_generate comes from ALE; the usgscsm_cassis env has the CaSSIS-capable
 # ALE. See the README Environment section.
-source cassis_env_check.sh
+# find our sibling scripts whether we were invoked by path or via PATH (bare name)
+_bin=$(cd "$(dirname "$0")" 2>/dev/null && pwd); case "$0" in */*) : ;; *) _bin=$(cd "$(dirname "$(command -v "$0")")" 2>/dev/null && pwd) ;; esac
+source "$_bin/cassis_env_check.sh"
 cassis_require_ale
 ISD="$CONDA_PREFIX/bin/isd_generate"
 

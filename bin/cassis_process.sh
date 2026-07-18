@@ -3,26 +3,28 @@
 # Config-driven (sources cassis_common.conf + a per-site cassis_siteName.conf), RESUMABLE by
 # stage number, and TIMED (every heavy stage prints START/DONE + elapsed via `date`). No figures.
 #
-# STAGES (run stage k iff fromStage <= k <= toStage; each skips cheaply if its output already exists):
-#   0  CTX reference build        cassis_ctx_build.sh          -> refDem + mapprojDem   [PREP]
-#   1  linescan DEM               cassis_linescan_dem.sh       -> ls stereo DEM    [PREP, needs kernels]
-#   2  align linescan -> CTX      cassis_align_cams.sh         -> cams_aligned states [PREP]
-#   3  aligned framelets         linescan2framelets.sh        -> frame/aligned_framelets [PREP]
-#   4  refit lens -> transverse   refit_transverse.sh          -> registered_cassis_cams    [PREP]
-#   5  apply optimized distortion + refit pose (cam_gen loop)              -> startCamDir      [HEAVY]
-#   6  dense matches                                           -> matchpfx*.match  [HEAVY]
-#   7  pass1  (cassis_run.sh pass1)                        -> pass1 DEM        [HEAVY]
-#   8  pass2  (cassis_run.sh pass2)                        -> FINAL DEM        [HEAVY]
+# This script is TIER 2, DATA PROCESSING: the automated stages that turn the ingested cubes and cameras
+# and the CTX reference into the final DEM. They run with little user input, usually on a remote/compute
+# machine (a batch job). TIER 1, DATA INGESTION (fetch framelets, download kernels, ingest to cubes,
+# make cameras, build the CTX reference DEM, and make the blurred mapproj DEM) is done first, on a local
+# machine, with network access and inspection. Tier 1 is not part of this script (see the README).
 #
-# WHY split PREP (0-4) from HEAVY (5-8): stages 0-4 need SPICE kernels / camera generation and run on a
-# workstation with the kernels; stages 5-8 are the compute-heavy part, for a cluster or compute node. A
-# fresh site runs 0-4 on the prep host, then 5-8 on the compute node. For a site whose prep is already on
-# disk, just run `cassis_process.sh <conf> 5 8 <B>` on the compute node.
+# STAGES (run stage k iff fromStage <= k <= toStage; each skips cheaply if its output already exists):
+#   1  linescan DEM               cassis_linescan_dem.sh   -> ls stereo DEM
+#   2  align linescan -> CTX      cassis_align_cams.sh     -> cams_aligned states
+#   3  aligned framelets         linescan2framelets.sh    -> frame/aligned_framelets
+#   4  refit lens -> transverse   refit_transverse.sh      -> registered_cassis_cams
+#   5  apply optimized distortion + refit pose (cam_gen loop)          -> startCamDir
+#   6  dense matches                                       -> matchpfx*.match
+#   7  pass1  (cassis_run.sh pass1)                        -> pass1 DEM
+#   8  pass2  (cassis_run.sh pass2)                        -> FINAL DEM
+#
+# All inputs (cubs, cameras, refDem, mapprojDem) come from Tier 1 and are named in the site config.
 # The final delivered DEM = <outDir>/frame/pass2_stereo/cassis_dem.tif (+ _on_ctx.tif).
 #
 # Usage:  cassis_process.sh <site.conf> <fromStage> <toStage> <outDir> <B>
-#   e.g.  cassis_process.sh cassis_ox1.conf 5 8 ox1_out /path/to/workdir
-#   fromStage..toStage is the stage range to run (0..8). outDir is where ALL outputs go (any path,
+#   e.g.  cassis_process.sh cassis_ox1.conf 1 8 ox1_out /path/to/workdir
+#   fromStage..toStage is the stage range to run (1..8). outDir is where ALL outputs go (any path,
 #   relative to the workdir or absolute; changes per run). Reuse an existing outDir to RESUME (each
 #   stage skips if its output exists); use a fresh outDir for a clean run.
 set +e; umask 022
@@ -34,10 +36,13 @@ set +e; umask 022
 selfBin=$(cd "$(dirname "$0")" 2>/dev/null && pwd)
 [ -n "$selfBin" ] && export PATH="$selfBin:$PATH"
 cfg=${1:?site config (cassis_siteName.conf)}
-fromStage=${2:?fromStage (0..8)}
-toStage=${3:?toStage (0..8)}
+fromStage=${2:?fromStage (1..8)}
+toStage=${3:?toStage (1..8)}
 outDir=${4:?outDir (output dir, relative to workdir or absolute; changes per run)}
 B=${5:?work base dir, LAST}
+# Stages start at 1. The CTX reference DEM and the blurred mapproj DEM are Tier-1 setup
+# (see the README), not stages here.
+[ "$fromStage" -ge 1 ] 2>/dev/null || { echo "ERROR fromStage must be >= 1 (CTX build / mapproj DEM are Tier-1 setup, not stages)"; exit 1; }
 # The ASP and ISIS tools must be on PATH and the projection/ISIS environment set
 # up beforehand (activate a conda ASP environment, or use a packaged ASP build).
 # See the repository README, Environment section.
@@ -57,12 +62,9 @@ linescanDem=${linescanDem:-$outDir/linescan/linescan_dem/align/aligned_oncoarse.
 
 # Pre-flight: fail early (before the long run) if the config inputs or required tools are missing.
 if [ "$toStage" -ge 1 ]; then
-  [ -s "$refDem" ] || { echo "ERROR refDem not found: $refDem (check the site config)"; exit 1; }
-  # mapprojDem is produced by stage 0 (blur of refDem) when missing, so only
-  # require it up front if stage 0 will not run (fromStage>=1).
-  if [ "$fromStage" -ge 1 ]; then
-    [ -s "$mapprojDem" ] || { echo "ERROR mapprojDem not found: $mapprojDem (run stage 0 to build it, or check the site config)"; exit 1; }
-  fi
+  # refDem and mapprojDem are Tier-1 inputs named in the site config; both must exist.
+  [ -s "$refDem" ] || { echo "ERROR refDem not found: $refDem (a Tier-1 input; check the site config)"; exit 1; }
+  [ -s "$mapprojDem" ] || { echo "ERROR mapprojDem not found: $mapprojDem (the blurred CTX DEM, a Tier-1 input; check the site config)"; exit 1; }
   nL=$(cassis_look_cubs "$inputCassisDir" "$Llook" | wc -l | tr -d ' ')
   nR=$(cassis_look_cubs "$inputCassisDir" "$Rlook" | wc -l | tr -d ' ')
   [ "${nL:-0}" -ge 1 ] || { echo "ERROR no cubs for Llook=$Llook under inputCassisDir=$inputCassisDir"; exit 1; }
@@ -102,41 +104,10 @@ t0all=$(date +%s)
 stage_hdr(){ echo ""; echo "===== STAGE $1 [$2] START $(date) ====="; }
 stage_done(){ echo "===== STAGE $1 DONE $(date) (elapsed $(( $(date +%s) - $3 ))s) ====="; }
 
-# ============================ STAGES 0-4: PREP ============================
-# Stage 0 sets up the two CTX products the site config names: refDem (the CTX
-# reference DEM) and mapprojDem (the low-resolution blurred CTX DEM used for
-# mapprojection). Building refDem from raw CTX (vendor DTM + STAC download) is a
-# standalone step the master cannot run; use cassis_ctx_build.sh for that and set
-# refDem in the site config. But cassis.rst's Approach explicitly permits
-# starting from an EXISTING CTX reference DEM. In that supplied-refDem case the
-# only thing still missing is mapprojDem, which is just refDem blurred, so the
-# master produces it here. This is the single stage-0 action a supplied-CTX site
-# needs; the full cassis_ctx_build.sh is not required.
-# Stages 1-4 RUN their prep scripts here (each skips if its output already exists), so the master runs
-# the whole processing chain 1..8. They need the ingested cubes and cameras (do fetch/ingest/cameras
-# first; see the README Data ingestion section).
-if want 0; then
-  stage_hdr 0 "CTX setup (mapprojDem blur)"; t=$(date +%s)
-  if [ -s "$refDem" ] && [ -s "$mapprojDem" ]; then
-    echo "  refDem+mapprojDem exist - skip ($refDem)"
-  elif [ -s "$refDem" ]; then
-    # refDem supplied but mapprojDem missing: produce it by blurring refDem. The
-    # blur sigma is the shared constant mapprojBlurSigma (cassis_common.conf),
-    # matching cassis_ctx_build.sh. dem_mosaic writes a suffixed name, so glob it
-    # and move it to the config's mapprojDem path.
-    sig=${mapprojBlurSigma:-5}
-    echo "  refDem present, mapprojDem missing -> blur refDem (dem_mosaic --dem-blur-sigma $sig) -> $mapprojDem"
-    mkdir -p "$(dirname "$mapprojDem")" "$outDir/frame"
-    tmp=$outDir/frame/_mapprojdem_blur
-    dem_mosaic --dem-blur-sigma "$sig" "$refDem" -o "$tmp" > "$outDir/frame/mapprojdem_blur.log" 2>&1
-    bl=$(ls "$tmp"*.tif 2>/dev/null | head -1)
-    [ -s "$bl" ] && mv "$bl" "$mapprojDem"
-    [ -s "$mapprojDem" ] && echo "  wrote mapprojDem $mapprojDem" || { echo "STAGE0_FAIL could not blur refDem into mapprojDem (see $outDir/frame/mapprojdem_blur.log)"; exit 1; }
-  else
-    echo "  SETUP: no refDem. Build the CTX with cassis_ctx_build.sh (needs a vendor DTM + site center), then set refDem/mapprojDem in $cfg"
-  fi
-  stage_done 0 "CTX setup" "$t"
-fi
+# ============================ STAGES 1-8: TIER 2 DATA PROCESSING ============================
+# Each stage runs its script and skips cheaply if its output already exists. All inputs (cubs, cameras,
+# refDem, mapprojDem) come from Tier 1 (fetch/ingest/cameras + CTX build + the blurred mapproj DEM; see
+# the README). CTX build and the blurred mapproj DEM are Tier-1 setup, not stages here.
 if want 1; then
   stage_hdr 1 "linescan DEM"; t=$(date +%s)
   if [ -s "$linescanDem" ]; then echo "  linescan DEM exists - skip ($linescanDem)";
@@ -166,12 +137,15 @@ fi
 # ============================ STAGE 5: apply optimized distortion + refit pose (heavy) ============================
 if want 5; then
   stage_hdr 5 "apply optimized distortion + refit pose"; t=$(date +%s)
-  [ -d "$refitCamDir" ] || { echo "STAGE5_FAIL missing $refitCamDir - run prep stage 4 on the prep host"; exit 1; }
-  [ -s "$refDem" ] || { echo "STAGE5_FAIL missing refDem $refDem - run prep stage 0"; exit 1; }
+  [ -d "$refitCamDir" ] || { echo "STAGE5_FAIL missing $refitCamDir - run stage 4 first"; exit 1; }
+  [ -s "$refDem" ] || { echo "STAGE5_FAIL missing refDem $refDem - a Tier-1 input; check the site config"; exit 1; }
   nref=$(ls "$refitCamDir"/*.json 2>/dev/null | wc -l | tr -d ' ')
   [ "${nref:-0}" -ge 2 ] || { echo "STAGE5_FAIL too few refit cams ($nref) in $refitCamDir"; exit 1; }
   mkdir -p "$startCamDir"
-  NCORE=$( (nproc 2>/dev/null) || echo 28); K=$(( NCORE > 2 ? NCORE : 2 ))
+  # core count: prefer $PBS_NODEFILE (bare nproc can return 1 inside a PBS job), then nproc --all.
+  NCORE=$( { [ -r "$PBS_NODEFILE" ] && wc -l < "$PBS_NODEFILE"; } 2>/dev/null || nproc --all 2>/dev/null || echo 28 )
+  case "$NCORE" in ''|*[!0-9]*) NCORE=28 ;; esac
+  K=$(( NCORE > 2 ? NCORE : 2 ))
   echo "  applying optimized distortion to $nref cams (K=$K concurrent) refDem=$refDem posUnc=$refitPosUnc pix=$refitPixSamples"
   set +e; i=0; done5=0
   for cam in "$refitCamDir"/*.json; do
