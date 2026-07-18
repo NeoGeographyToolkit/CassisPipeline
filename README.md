@@ -149,7 +149,8 @@ the two environments. Preparing the prior CaSSIS DEM used only for comparison is
 
 ## Processing stages
 
-The numbered stages run on the ingested cubes and cameras. Two 
+The numbered stages run on the ingested cubes and cameras. Two things must be in
+place first.
 
 First, a recent ASP release is needed, from 2026/7 or later, from the [releases
 page](https://github.com/NeoGeographyToolkit/StereoPipeline/releases). Such a
@@ -173,6 +174,11 @@ environment's own isd_generate, via CONDA_PREFIX.
 The scripts are generic; the pipeline learns about the data through two files,
 which live in the work directory, not in this repository. Example copies
 are in the config directory. Both are sourced as shell variables.
+
+The config directory ships a ready per-site config for every site in the ASP
+documentation: `cassis_jezero.conf`, `cassis_ox1.conf`, `cassis_ox2.conf`,
+`cassis_gusev.conf`, and `cassis_004756.conf`, plus the shared
+`cassis_common.conf`. Copy the pair you need into the work directory.
 
 - cassis_common.conf holds the shared recipe constants (grid resolutions,
   bundle-adjustment uncertainties, the frozen lens coefficients, dense-match

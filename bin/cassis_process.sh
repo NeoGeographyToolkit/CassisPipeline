@@ -58,7 +58,11 @@ linescanDem=${linescanDem:-$outDir/linescan/linescan_dem/align/aligned_oncoarse.
 # Pre-flight: fail early (before the long run) if the config inputs or required tools are missing.
 if [ "$toStage" -ge 1 ]; then
   [ -s "$refDem" ] || { echo "ERROR refDem not found: $refDem (check the site config)"; exit 1; }
-  [ -s "$mapprojDem" ] || { echo "ERROR mapprojDem not found: $mapprojDem (check the site config)"; exit 1; }
+  # mapprojDem is produced by stage 0 (blur of refDem) when missing, so only
+  # require it up front if stage 0 will not run (fromStage>=1).
+  if [ "$fromStage" -ge 1 ]; then
+    [ -s "$mapprojDem" ] || { echo "ERROR mapprojDem not found: $mapprojDem (run stage 0 to build it, or check the site config)"; exit 1; }
+  fi
   nL=$(cassis_look_cubs "$inputCassisDir" "$Llook" | wc -l | tr -d ' ')
   nR=$(cassis_look_cubs "$inputCassisDir" "$Rlook" | wc -l | tr -d ' ')
   [ "${nL:-0}" -ge 1 ] || { echo "ERROR no cubs for Llook=$Llook under inputCassisDir=$inputCassisDir"; exit 1; }
@@ -99,40 +103,63 @@ stage_hdr(){ echo ""; echo "===== STAGE $1 [$2] START $(date) ====="; }
 stage_done(){ echo "===== STAGE $1 DONE $(date) (elapsed $(( $(date +%s) - $3 ))s) ====="; }
 
 # ============================ STAGES 0-4: PREP ============================
-# Stage 0 (CTX build) is a standalone site setup that needs a vendor DTM and site coordinates, so the
-# master cannot run it - it only reminds you to run cassis_ctx_build.sh and set refDem/mapprojDem.
+# Stage 0 sets up the two CTX products the site config names: refDem (the CTX
+# reference DEM) and mapprojDem (the low-resolution blurred CTX DEM used for
+# mapprojection). Building refDem from raw CTX (vendor DTM + STAC download) is a
+# standalone step the master cannot run; use cassis_ctx_build.sh for that and set
+# refDem in the site config. But cassis.rst's Approach explicitly permits
+# starting from an EXISTING CTX reference DEM. In that supplied-refDem case the
+# only thing still missing is mapprojDem, which is just refDem blurred, so the
+# master produces it here. This is the single stage-0 action a supplied-CTX site
+# needs; the full cassis_ctx_build.sh is not required.
 # Stages 1-4 RUN their prep scripts here (each skips if its output already exists), so the master runs
 # the whole processing chain 1..8. They need the ingested cubes and cameras (do fetch/ingest/cameras
 # first; see the README Data ingestion section).
 if want 0; then
-  stage_hdr 0 "CTX build (standalone setup)"; t=$(date +%s)
-  if [ -s "$refDem" ] && [ -s "$mapprojDem" ]; then echo "  refDem+mapprojDem exist - skip ($refDem)";
-  else echo "  SETUP: build the CTX with cassis_ctx_build.sh (needs a vendor DTM + site center), then set refDem/mapprojDem in $cfg"; fi
-  stage_done 0 "CTX build" "$t"
+  stage_hdr 0 "CTX setup (mapprojDem blur)"; t=$(date +%s)
+  if [ -s "$refDem" ] && [ -s "$mapprojDem" ]; then
+    echo "  refDem+mapprojDem exist - skip ($refDem)"
+  elif [ -s "$refDem" ]; then
+    # refDem supplied but mapprojDem missing: produce it by blurring refDem. The
+    # blur sigma is the shared constant mapprojBlurSigma (cassis_common.conf),
+    # matching cassis_ctx_build.sh. dem_mosaic writes a suffixed name, so glob it
+    # and move it to the config's mapprojDem path.
+    sig=${mapprojBlurSigma:-5}
+    echo "  refDem present, mapprojDem missing -> blur refDem (dem_mosaic --dem-blur-sigma $sig) -> $mapprojDem"
+    mkdir -p "$(dirname "$mapprojDem")" "$outDir/frame"
+    tmp=$outDir/frame/_mapprojdem_blur
+    dem_mosaic --dem-blur-sigma "$sig" "$refDem" -o "$tmp" > "$outDir/frame/mapprojdem_blur.log" 2>&1
+    bl=$(ls "$tmp"*.tif 2>/dev/null | head -1)
+    [ -s "$bl" ] && mv "$bl" "$mapprojDem"
+    [ -s "$mapprojDem" ] && echo "  wrote mapprojDem $mapprojDem" || { echo "STAGE0_FAIL could not blur refDem into mapprojDem (see $outDir/frame/mapprojdem_blur.log)"; exit 1; }
+  else
+    echo "  SETUP: no refDem. Build the CTX with cassis_ctx_build.sh (needs a vendor DTM + site center), then set refDem/mapprojDem in $cfg"
+  fi
+  stage_done 0 "CTX setup" "$t"
 fi
 if want 1; then
   stage_hdr 1 "linescan DEM"; t=$(date +%s)
   if [ -s "$linescanDem" ]; then echo "  linescan DEM exists - skip ($linescanDem)";
-  else bash cassis_linescan_dem.sh "$cfg" "$outDir" "$B" || { echo "STAGE1_FAIL linescan DEM"; exit 1; }; fi
+  else bash "$selfBin/cassis_linescan_dem.sh" "$cfg" "$outDir" "$B" || { echo "STAGE1_FAIL linescan DEM"; exit 1; }; fi
   stage_done 1 "linescan DEM" "$t"
 fi
 if want 2; then
   stage_hdr 2 "align linescan->CTX"; t=$(date +%s)
   if ls "$outDir"/linescan/linescan_dem/cams_aligned/run-*adjusted_state.json >/dev/null 2>&1; then echo "  aligned cam states exist - skip";
-  else bash cassis_align_cams.sh "$cfg" "$outDir" "$B" || { echo "STAGE2_FAIL align"; exit 1; }; fi
+  else bash "$selfBin/cassis_align_cams.sh" "$cfg" "$outDir" "$B" || { echo "STAGE2_FAIL align"; exit 1; }; fi
   stage_done 2 "align ls->CTX" "$t"
 fi
 if want 3; then
   stage_hdr 3 "aligned framelets"; t=$(date +%s)
   if ls "$outDir"/frame/aligned_framelets/*/aligned-*.json >/dev/null 2>&1; then echo "  aligned framelets exist - skip";
-  else bash linescan2framelets.sh "$cfg" "$outDir" "$B" || { echo "STAGE3_FAIL framelets"; exit 1; }; fi
+  else bash "$selfBin/linescan2framelets.sh" "$cfg" "$outDir" "$B" || { echo "STAGE3_FAIL framelets"; exit 1; }; fi
   stage_done 3 "aligned framelets" "$t"
 fi
 if want 4; then
   stage_hdr 4 "refit lens -> transverse"; t=$(date +%s)
   n4=$(ls "$refitCamDir"/*.json 2>/dev/null | wc -l | tr -d ' ')
   if [ "${n4:-0}" -ge 2 ]; then echo "  registered_cassis_cams has $n4 cams - skip";
-  else bash refit_transverse.sh "$cfg" "$outDir" "$B" || { echo "STAGE4_FAIL refit"; exit 1; }; fi
+  else bash "$selfBin/refit_transverse.sh" "$cfg" "$outDir" "$B" || { echo "STAGE4_FAIL refit"; exit 1; }; fi
   stage_done 4 "refit transverse" "$t"
 fi
 
@@ -190,7 +217,7 @@ if want 6; then
       echo "$cub" >> "$dimg"; echo "$camf" >> "$dcam"
     done
     # dense mode: geounc is the PRE-BA collar (denseGeounc), NOT the DEM geounc=0
-    bash cassis_stereo.sh "$outDir" "${nick}_dense" "$dimg" "$dcam" "$denseGeounc" "$mapprojDem" "$refDem" \
+    bash "$selfBin/cassis_stereo.sh" "$outDir" "${nick}_dense" "$dimg" "$dcam" "$denseGeounc" "$mapprojDem" "$refDem" \
       "$mapprojRes" "$demRes" "$matchpfx" "$Llook" "$Rlook" "$num_matches_from_disp" "$B" \
       || { echo "STAGE6_FAIL dense (see output_${nick}_dense_stereo.txt)"; exit 1; }
     nm=$(ls "$B"/$matchpfx-*.match 2>/dev/null | wc -l | tr -d ' ')
@@ -205,7 +232,7 @@ if want 7; then
   p1dem=$outDir/frame/pass1_stereo/cassis_dem.tif
   if [ -s "$p1dem" ]; then echo "  pass1 DEM exists - skip ($p1dem)";
   else
-    bash cassis_run.sh "$cfg" pass1 "$outDir" "$B" || { echo "STAGE7_FAIL pass1"; exit 1; }
+    bash "$selfBin/cassis_run.sh" "$cfg" pass1 "$outDir" "$B" || { echo "STAGE7_FAIL pass1"; exit 1; }
   fi
   [ -s "$p1dem" ] || { echo "STAGE7_FAIL pass1 no DEM $p1dem"; exit 1; }
   echo "  pass1 DEM: $p1dem"
@@ -218,7 +245,7 @@ if want 8; then
   p2dem=$outDir/frame/pass2_stereo/cassis_dem.tif
   if [ -s "$p2dem" ]; then echo "  pass2 DEM exists - skip ($p2dem)";
   else
-    bash cassis_run.sh "$cfg" pass2 "$outDir" "$B" || { echo "STAGE8_FAIL pass2"; exit 1; }
+    bash "$selfBin/cassis_run.sh" "$cfg" pass2 "$outDir" "$B" || { echo "STAGE8_FAIL pass2"; exit 1; }
   fi
   [ -s "$p2dem" ] || { echo "STAGE8_FAIL pass2 no DEM $p2dem"; exit 1; }
   echo "  FINAL DEM: $p2dem"

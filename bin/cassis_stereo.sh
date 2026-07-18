@@ -19,7 +19,7 @@
 #     grid/proj + the dz geodiff. TWO DISTINCT CTX inputs, both ARGS - do NOT conflate them.
 # Recipe (fixed, same every stage): --ip-match-radius 20, --min-matches 5 + --ip-per-tile 2000, asp_mgm
 #   subpixel 9, alignment none, point2dem --errorimage --max-valid-triangulation-error 8,
-#   +/-500 m per-pair blunder filter, max tri-error mosaic.
+#   CTX-relative per-pair blunder filter (blunderTolM, default 500 m), max tri-error mosaic.
 # Self-contained under qsub (own cd/umask/log). Resume-safe (skip a pair whose dem-DEM.tif is valid).
 # TWO GRIDS (do NOT conflate - the CLAUDE.md stereo-res rule): res = the MAPPROJECT/correlation grid,
 # ALWAYS NATIVE ~4.59 m (mapproj at a coarse grid blurs the framelets before correlation = a blocky
@@ -219,24 +219,48 @@ write_pair_env "$T"
 parallel -j "$K" --colsep ' ' --joblog "$out/joblog_dem.txt" \
   bash cassis_stereo_pair.sh dem {1} {2} "$out/pair.env" < "$pf"
 
-# --- 4. blunder filter (mean elev within +/-500 m of median) + dem_mosaic -> frame DEM ---
+# --- 4. blunder filter + dem_mosaic -> frame DEM ---
+# Drop a per-pair DEM only if its MEAN elevation departs from the CTX reference
+# (refDem) over the SAME footprint by more than blunderTolM. This is relief-aware:
+# comparing each pair to a GLOBAL median (the old rule) wrongly discards
+# legitimately high (or low) slivers on high-relief scenes - e.g. the Olympus
+# flank has ~1800 m of relief, so the many low-plain slivers dominate the median
+# and every high-flank sliver is thrown out as a blunder, truncating the DEM. A
+# real stereo blunder triangulates to space and is off from CTX by thousands of m;
+# a good sliver matches CTX to tens of m at ANY elevation, so a local comparison
+# to CTX keeps all real terrain and still drops true blunders. Where CTX has no
+# data over a sliver, keep it (cannot judge). blunderTolM overridable, default 500.
+blunderTolM=${blunderTolM:-500}
 dems=$(python3 -c "
-import subprocess,re,statistics,sys
-# explicit per-pair DEM paths from the pairs list - NO glob
-items=[]
+import subprocess,re,os,sys
+refDem='$refDem'; tol=float('$blunderTolM')
+def ginfo(p): return subprocess.run(['gdalinfo','-stats',p],capture_output=True,text=True).stdout
+def getmean(t):
+    m=re.search(r'STATISTICS_MEAN=(-?[0-9.]+)',t); return float(m.group(1)) if m else None
+def bbox(t):
+    ul=re.search(r'Upper Left\s+\(\s*(-?[0-9.]+),\s*(-?[0-9.]+)\)',t)
+    lr=re.search(r'Lower Right\s+\(\s*(-?[0-9.]+),\s*(-?[0-9.]+)\)',t)
+    return (ul.group(1),ul.group(2),lr.group(1),lr.group(2)) if ul and lr else None
+keep=[]; drop=[]
 for line in open('$pf'):
     p=line.split()
     if len(p)!=2: continue
     d='$out/stereo/%s__%s/dem-DEM.tif'%(p[0],p[1])
-    o=subprocess.run(['gdalinfo','-stats',d],capture_output=True,text=True).stdout
-    m=re.search(r'STATISTICS_MEAN=(-?[0-9.]+)',o)
-    if m: items.append((float(m.group(1)),d))
-if items:
-    med=statistics.median([v for v,_ in items])
-    keep=[d for v,d in items if abs(v-med)<=500]
-    drop=[d.split('/')[-2] for v,d in items if abs(v-med)>500]
-    import sys; sys.stderr.write(f'  blunder filter: kept {len(keep)}/{len(items)}, dropped {len(drop)}\n')
-    print(' '.join(keep))
+    if not os.path.exists(d): continue
+    t=ginfo(d); ms=getmean(t); bb=bbox(t)
+    if ms is None: continue
+    mc=None
+    if bb is not None:
+        tmp='/tmp/ctxcrop_%d_%d.tif'%(os.getpid(),len(keep)+len(drop))
+        subprocess.run(['gdal_translate','-q','-projwin',bb[0],bb[1],bb[2],bb[3],refDem,tmp],capture_output=True,text=True)
+        if os.path.exists(tmp):
+            mc=getmean(ginfo(tmp)); os.remove(tmp)
+    if mc is None or abs(ms-mc)<=tol:
+        keep.append(d)
+    else:
+        drop.append(d.split('/')[-2])
+sys.stderr.write('  blunder filter (CTX-relative, tol=%g m): kept %d, dropped %d\n'%(tol,len(keep),len(drop)))
+print(' '.join(keep))
 ")
 nd=$(echo "$dems" | wc -w | tr -d ' ')
 echo "=== [4] dem_mosaic $nd per-pair DEMs (blunders filtered) -> frame DEM ==="
