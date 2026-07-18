@@ -174,19 +174,10 @@ are in the config directory. Both are sourced as shell variables.
   settings). It normally does not need editing. The lens coefficients are a global
   CaSSIS instrument constant, reused as is for every site.
 - cassis_siteName.conf (for example cassis_jezero.conf) holds only the per-site
-  inputs. The shipped cassis_jezero.conf is:
-
-  ```bash
-  inputCassisDir=data/jezero/MY36_016378_162           # any dir holding the two looks' cubs
-  Llook=838849161                                      # left look id (ESA)
-  Rlook=838849162                                      # right look id
-  refDem=ref/jezero_ctx/jezero_ctx_18m.tif             # CTX reference DEM
-  mapprojDem=ref/jezero_ctx/jezero_ctx_18m_blur5.tif   # blurred CTX drape for mapprojection
-  ```
-
-  The two looks are found by their id in the cube filenames, so `inputCassisDir`
-  can be any directory that holds them. The output directory is not in the config
-  (it changes per run); it is passed on the command line (see Running).
+  inputs, listed above under Reference data: inputCassisDir, Llook, Rlook, refDem,
+  and mapprojDem. The two looks are found by their id in the cube filenames, so
+  inputCassisDir can be any directory that holds them. The output directory is not
+  in the config (it changes per run); it is passed on the command line (see Running).
 
 Every path in the site config is relative to the work directory unless it is
 absolute. Copy the two sample files into the work directory, edit every path to
