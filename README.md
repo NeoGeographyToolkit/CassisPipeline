@@ -193,23 +193,25 @@ is nothing to change.
 
 ### Running
 
-The master script can run everything end to end:
+With the cubes and cameras from ingestion in place and the CTX built (stage 0,
+below), the master script runs the whole processing chain, stages 1 through 8:
 
 ```bash
-cassis_process.sh cassis_siteName.conf 0 8 outDir /path/to/workdir
+cassis_process.sh cassis_siteName.conf 1 8 outDir /path/to/workdir
 ```
 
-The five arguments are the site config, the first and last stage to run (each 0
-to 8), the output directory, and the work directory. All outputs go under outDir,
-which can be any path and changes per run. Reuse an outDir to resume (each stage
-skips outputs that already exist); use a fresh outDir for a clean run.
+The five arguments are the site config, the first and last stage to run (1 to 8),
+the output directory, and the work directory. All outputs go under outDir, which
+can be any path and changes per run. Reuse an outDir to resume (each stage skips
+outputs that already exist); use a fresh outDir for a clean run. To run or inspect
+one stage at a time, set the same number for both, for example `1 1`, then `2 2`.
 
-Running all stages at once is not recommended for a first run. Stages 0 to 4 are
-each worth inspecting before moving on, and a wrong config path fails late. So the
-stages are walked one at a time below, each with what it does, what to check, and a
-link to the matching section of the ASP documentation. The quickest way to try the
-pipeline is to skip stages 0 to 4 entirely and start from the provided reference
-dataset (see Reference data), which already has them done.
+Stage 0 (the CTX reference DEM) is a standalone one-time site setup, not part of
+the master's chain; it is described next. Each stage is also documented on its own
+below, so a stage can be run or inspected individually. The quickest way to try
+the pipeline without any preparation is to start from the provided reference
+dataset (see Reference data), which ships the cubes, cameras, and CTX already
+done, so only the heavy stages need running.
 
 ### Stage 0, CTX reference DEM creation
 

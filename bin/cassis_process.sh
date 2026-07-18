@@ -98,38 +98,41 @@ t0all=$(date +%s)
 stage_hdr(){ echo ""; echo "===== STAGE $1 [$2] START $(date) ====="; }
 stage_done(){ echo "===== STAGE $1 DONE $(date) (elapsed $(( $(date +%s) - $3 ))s) ====="; }
 
-# ============================ STAGES 0-4: PREP (prep host; not a batch job) ============================
-# These call the existing per-site prep scripts. They are gated by fromStage/toStage. For a site
-# whose prep is on disk, run the master from stage 5 and these never fire. If a HEAVY stage below
-# needs a PREP output that is missing, it hard-errors telling you to run the prep stage on the prep host.
+# ============================ STAGES 0-4: PREP ============================
+# Stage 0 (CTX build) is a standalone site setup that needs a vendor DTM and site coordinates, so the
+# master cannot run it - it only reminds you to run cassis_ctx_build.sh and set refDem/mapprojDem.
+# Stages 1-4 RUN their prep scripts here (each skips if its output already exists), so the master runs
+# the whole processing chain 1..8. They need the ingested cubes and cameras (do fetch/ingest/cameras
+# first; see the README Data ingestion section).
 if want 0; then
-  stage_hdr 0 "CTX build (prep)"; t=$(date +%s)
+  stage_hdr 0 "CTX build (standalone setup)"; t=$(date +%s)
   if [ -s "$refDem" ] && [ -s "$mapprojDem" ]; then echo "  refDem+mapprojDem exist - skip ($refDem)";
-  else echo "  PREP: build CTX with cassis_ctx_build.sh on the prep host, then set refDem/mapprojDem in $cfg"; fi
+  else echo "  SETUP: build the CTX with cassis_ctx_build.sh (needs a vendor DTM + site center), then set refDem/mapprojDem in $cfg"; fi
   stage_done 0 "CTX build" "$t"
 fi
 if want 1; then
-  stage_hdr 1 "linescan DEM (prep)"; t=$(date +%s)
-  echo "  PREP: run 'cassis_linescan_dem.sh $cfg $outDir $B' on the prep host -> $outDir/linescan/linescan_dem/align/aligned_oncoarse.tif"
+  stage_hdr 1 "linescan DEM"; t=$(date +%s)
+  if [ -s "$linescanDem" ]; then echo "  linescan DEM exists - skip ($linescanDem)";
+  else bash cassis_linescan_dem.sh "$cfg" "$outDir" "$B" || { echo "STAGE1_FAIL linescan DEM"; exit 1; }; fi
   stage_done 1 "linescan DEM" "$t"
 fi
 if want 2; then
-  stage_hdr 2 "align linescan->CTX (prep)"; t=$(date +%s)
-  if [ -s "$linescanDem" ]; then echo "  aligned linescan DEM exists - skip ($linescanDem)";
-  else echo "  PREP: run 'cassis_align_cams.sh $cfg $outDir $B' on the prep host -> cams_aligned states"; fi
+  stage_hdr 2 "align linescan->CTX"; t=$(date +%s)
+  if ls "$outDir"/linescan/linescan_dem/cams_aligned/run-*adjusted_state.json >/dev/null 2>&1; then echo "  aligned cam states exist - skip";
+  else bash cassis_align_cams.sh "$cfg" "$outDir" "$B" || { echo "STAGE2_FAIL align"; exit 1; }; fi
   stage_done 2 "align ls->CTX" "$t"
 fi
 if want 3; then
-  stage_hdr 3 "aligned framelets (prep)"; t=$(date +%s)
-  if [ -d "$outDir/frame/aligned_framelets" ]; then echo "  aligned framelets exist - skip ($outDir/frame/aligned_framelets)";
-  else echo "  PREP: run 'linescan2framelets.sh $cfg $outDir $B' on the prep host -> $outDir/frame/aligned_framelets"; fi
+  stage_hdr 3 "aligned framelets"; t=$(date +%s)
+  if ls "$outDir"/frame/aligned_framelets/*/aligned-*.json >/dev/null 2>&1; then echo "  aligned framelets exist - skip";
+  else bash linescan2framelets.sh "$cfg" "$outDir" "$B" || { echo "STAGE3_FAIL framelets"; exit 1; }; fi
   stage_done 3 "aligned framelets" "$t"
 fi
 if want 4; then
-  stage_hdr 4 "refit lens -> transverse (prep)"; t=$(date +%s)
+  stage_hdr 4 "refit lens -> transverse"; t=$(date +%s)
   n4=$(ls "$refitCamDir"/*.json 2>/dev/null | wc -l | tr -d ' ')
   if [ "${n4:-0}" -ge 2 ]; then echo "  registered_cassis_cams has $n4 cams - skip";
-  else echo "  PREP: run 'refit_transverse.sh $cfg $outDir $B' on the prep host -> $refitCamDir"; fi
+  else bash refit_transverse.sh "$cfg" "$outDir" "$B" || { echo "STAGE4_FAIL refit"; exit 1; }; fi
   stage_done 4 "refit transverse" "$t"
 fi
 
