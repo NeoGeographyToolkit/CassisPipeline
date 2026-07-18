@@ -86,10 +86,12 @@ mapprojDem=ref/jezero_ctx/jezero_ctx_18m_blur5.tif   # blurred CTX DEM
 
 ### Download and create the cube files
 
-This step downloads the framelets and the SPICE kernels, and ingests the framelets
-to ISIS cubes. It needs an ISIS environment. Set up the
+This step downloads the framelets, and ingests them to ISIS cubes. It needs an
+ISIS environment. Set up the
 [ISIS environment](https://stereopipeline.readthedocs.io/en/latest/examples/cassis.html#cassis-isis-env)
-described in the ASP documentation, then activate it.
+described in the ASP documentation, then activate it and set `ISISROOT` (the ISIS
+installation, its conda prefix) and `ISISDATA` (the ISIS data tree, which holds
+the TGO/CaSSIS kernels).
 
 Fetch the calibrated PAN framelets for both looks (framelet collections) from
 the ESA PSA, into `inputCassisDir` (the fetch groups them as `L1_<Llook>` and
@@ -116,6 +118,7 @@ both in the ISIS environment. Example for the Jezero site:
 
 ```bash
 conda activate isis10
+export ISISROOT=$CONDA_PREFIX ISISDATA=/path/to/isisdata   # ISIS install + data tree
 cassis_ingest_cubes.sh $inputCassisDir
 ```
 
@@ -131,8 +134,13 @@ Example for the Jezero site:
 
 ```bash
 conda activate usgscsm_cassis
+export ISISDATA=/path/to/isisdata ALESPICEROOT=/path/to/isisdata   # ISIS data tree + ALE metakernel root
 cassis_make_cameras.sh $inputCassisDir
 ```
+
+The camera step needs `ISISDATA` (the ISIS data tree) and `ALESPICEROOT` (the ALE
+SPICE root, where `isd_generate` finds the CaSSIS metakernels; no `spiceinit` is
+run). The scripts check these are set and exist and fail early if not.
 
 Both ingest and camera scripts scan the per-look subdirectories under the given
 data root and are idempotent, so a re-run only fills in what is missing. Do not mix
