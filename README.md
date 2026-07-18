@@ -63,12 +63,14 @@ Extract it in the current directory.
 Each command below will be practiced on it. The commands will exit quickly if
 the outputs they are supposed to create already exist.
 
-The sample commands below use these shell variables. Set them once in your shell:
+A site's inputs live in its config file, which the pipeline sources as shell
+variables (`inputCassisDir`, `Llook`, `Rlook`, `refDem`, `mapprojDem`; see
+Configuration below). For the sample commands below, source the Jezero config so
+the same variables are available in your shell:
 
 ```bash
-pair=jezero/MY36_016378_162      # the pair directory
-data=data/$pair                  # the framelet data root
-sidL=838849161; sidR=838849162   # left and right look identifiers
+source cassis_jezero.conf
+# now $inputCassisDir, $Llook, $Rlook, $refDem, $mapprojDem are set
 ```
 
 ## Data ingestion
@@ -81,17 +83,19 @@ to ISIS cubes. It needs an ISIS environment. Set up the
 described in the ASP documentation, then activate it.
 
 Fetch the calibrated PAN framelets for both looks (framelet collections) from
-the ESA PSA, into `data/<pairDir>/L1_<sidL>` and `L2_<sidR>` ([Fetching the
+the ESA PSA, into `inputCassisDir` (the fetch groups them as `L1_<Llook>` and
+`L2_<Rlook>` there, but the pipeline later finds each look by its id in the cube
+filenames, so any layout works) ([Fetching the
 framelets](https://stereopipeline.readthedocs.io/en/latest/examples/cassis.html#cassis-fetch)):
 
 ```bash
-cassis_fetch_pair.sh <orbit> <sidL> <sidR> data/<pairDir>
+cassis_fetch_pair.sh <orbit> <Llook> <Rlook> <inputCassisDir>
 ```
 
 For the Jezero sample:
 
 ```bash
-cassis_fetch_pair.sh 16378 $sidL $sidR $data
+cassis_fetch_pair.sh 16378 $Llook $Rlook $inputCassisDir
 ```
 
 Download the SPICE kernels
@@ -103,13 +107,13 @@ both in the ISIS environment:
 
 ```bash
 conda activate isis10
-cassis_ingest_cubes.sh data/<pairDir>
+cassis_ingest_cubes.sh <inputCassisDir>
 ```
 
 For the Jezero sample:
 
 ```bash
-cassis_ingest_cubes.sh $data
+cassis_ingest_cubes.sh $inputCassisDir
 ```
 
 ### Create the CSM cameras
@@ -122,13 +126,13 @@ provides gdal, numpy, and scipy, so it is reused by the processing stages below.
 
 ```bash
 conda activate usgscsm_cassis
-cassis_make_cameras.sh data/<pairDir>
+cassis_make_cameras.sh <inputCassisDir>
 ```
 
 For the Jezero sample:
 
 ```bash
-cassis_make_cameras.sh $data
+cassis_make_cameras.sh $inputCassisDir
 ```
 
 Both ingest and camera scripts scan the per-look subdirectories under the given
@@ -155,43 +159,55 @@ export PATH=/path/to/CassisPipeline/bin:/path/to/StereoPipeline/bin:$PATH
 ```
 
 A proj.db not found error is the usual sign that the `usgscsm_cassis` environment
-is not activated.
+is not activated. Each script also checks up front that the environment is active
+(CONDA_PREFIX set) and that the tools it needs are on PATH, failing early with a
+clear message. Camera generation uses the environment's own isd_generate, not any
+older copy bundled with ASP.
 
 ### Configuration
 
-The scripts are generic, so you tell the pipeline where your data is through two
+The scripts are generic, so you tell the pipeline about your data through two
 files, which live in your work directory, not in this repository. Example copies
-are in the config directory.
+are in the config directory. Both are sourced as shell variables.
 
 - cassis_common.conf holds the shared recipe constants (grid resolutions,
   bundle-adjustment uncertainties, the frozen lens coefficients, dense-match
   settings). You normally do not edit it. The lens coefficients are a global
   CaSSIS instrument constant, reused as is for every site.
-- cassis_siteName.conf (for example cassis_jezero.conf) holds the per-site data
-  paths: the pair directory, the CTX reference DEM, the low-resolution blurred
-  CTX DEM used for mapprojection, and the left and right look identifiers. The
-  aligned linescan DEM and the start camera directory are derived from the pair
-  directory by convention, so they are not listed here.
+- cassis_siteName.conf (for example cassis_jezero.conf) holds only the per-site
+  inputs. The shipped cassis_jezero.conf is:
 
-Every path in the site config is interpreted relative to the work directory
-unless it is absolute. Copy the two sample files from the config directory into
-your work directory, edit every path in the site config to point at your data,
-and confirm each file it names exists. A wrong path fails late and can waste a
-long batch job. The Jezero sample already ships an edited cassis_jezero.conf, so
-for the sample there is nothing to change.
+  ```bash
+  inputCassisDir=data/jezero/MY36_016378_162           # any dir holding the two looks' cubs
+  Llook=838849161                                      # left look id (ESA)
+  Rlook=838849162                                      # right look id
+  refDem=ref/jezero_ctx/jezero_ctx_18m.tif             # CTX reference DEM
+  mapprojDem=ref/jezero_ctx/jezero_ctx_18m_blur5.tif   # blurred CTX drape for mapprojection
+  ```
+
+  The two looks are found by their id in the cube filenames, so `inputCassisDir`
+  can be any directory that holds them. The output directory is not in the config
+  (it changes per run); it is passed on the command line (see Running).
+
+Every path in the site config is relative to the work directory unless it is
+absolute. Copy the two sample files into your work directory, edit every path to
+point at your data, and confirm each named file exists. The pipeline also checks
+this up front and fails fast, so a wrong path does not waste a long batch job. The
+Jezero sample already ships an edited cassis_jezero.conf, so for the sample there
+is nothing to change.
 
 ### Running
 
 The master script can run everything end to end:
 
 ```bash
-cassis_process.sh cassis_siteName.conf 0 8 runTag /path/to/workdir
+cassis_process.sh cassis_siteName.conf 0 8 outDir /path/to/workdir
 ```
 
-The five arguments are the site config, the first and last stage to run, a run
-tag embedded in the output directory names, and the current work directory. Choose a
-distinct run tag per run so separate runs do not overwrite each other. Each stage
-skips the outputs that already exist.
+The five arguments are the site config, the first and last stage to run (each 0
+to 8), the output directory, and the work directory. All outputs go under outDir,
+which can be any path and changes per run. Reuse an outDir to resume (each stage
+skips outputs that already exist); use a fresh outDir for a clean run.
 
 Running all stages at once is not recommended for a first run. Stages 0 to 4 are
 each worth inspecting before moving on, and a wrong config path fails late. So the
@@ -228,13 +244,13 @@ makes a first DEM, aligned to the coarse CTX reference whose grid and projection
 drive every output. Needs the framelet cubes and cameras from ingestion.
 
 ```bash
-cassis_linescan_dem.sh <site.conf> <workdir>
+cassis_linescan_dem.sh <site.conf> <outDir> <workdir>
 ```
 
 For the Jezero sample, from inside the unpacked directory:
 
 ```bash
-cassis_linescan_dem.sh cassis_jezero.conf $(pwd)
+cassis_linescan_dem.sh cassis_jezero.conf jezero_out $(pwd)
 ```
 
 Check that the linescan DEM was produced under the work directory. Documented at
@@ -246,17 +262,17 @@ Carries the alignment transform found in stage 1 onto the tied linescan cameras,
 producing the CTX-aligned linescan camera states.
 
 ```bash
-cassis_align_cams.sh <site.conf> <workdir>
+cassis_align_cams.sh <site.conf> <outDir> <workdir>
 ```
 
 For the Jezero sample:
 
 ```bash
-cassis_align_cams.sh cassis_jezero.conf $(pwd)
+cassis_align_cams.sh cassis_jezero.conf jezero_out $(pwd)
 ```
 
 It finds the stage-1 transform and writes the aligned camera states under
-`<pairDir>/linescan/linescan_dem/cams_aligned/`. This and stage 3 consume stage-1
+`<outDir>/linescan/linescan_dem/cams_aligned/`. This and stage 3 consume stage-1
 and stage-2 intermediates, which the sample does not ship (they are large and
 regenerated), so they run only in a from-scratch pass; starting from the sample
 you skip straight to stage 5 with the provided cameras. Documented at
@@ -267,13 +283,13 @@ you skip straight to stage 5 with the provided cameras. Documented at
 Splits the registered linescan cameras back into per-framelet frame cameras.
 
 ```bash
-linescan2framelets.sh <site.conf> <workdir>
+linescan2framelets.sh <site.conf> <outDir> <workdir>
 ```
 
 For the Jezero sample (both looks in one call):
 
 ```bash
-linescan2framelets.sh cassis_jezero.conf $(pwd)
+linescan2framelets.sh cassis_jezero.conf jezero_out $(pwd)
 ```
 
 Check that a frame camera was written per framelet. Documented at
@@ -284,13 +300,13 @@ Check that a frame camera was written per framelet. Documented at
 Refits a single frozen transverse-distortion model and sets it on the cameras.
 
 ```bash
-refit_transverse.sh <site.conf> <workdir>
+refit_transverse.sh <site.conf> <outDir> <workdir>
 ```
 
 For the Jezero sample (both looks in one call):
 
 ```bash
-refit_transverse.sh cassis_jezero.conf $(pwd)
+refit_transverse.sh cassis_jezero.conf jezero_out $(pwd)
 ```
 
 Check the registered, distortion-corrected cameras. Documented at
@@ -306,7 +322,7 @@ walltime to your system:
 ```bash
 qsub -V -N cassis -l select=1:ncpus=28 -l walltime=6:00:00 -j oe -o cassis_qsub.log -- \
   /path/to/CassisPipeline/bin/cassis_process.sh \
-  cassis_siteName.conf 5 8 runTag /path/to/workdir
+  cassis_siteName.conf 5 8 outDir /path/to/workdir
 ```
 
 For the Jezero sample, from inside the unpacked directory (the master prints to
@@ -315,14 +331,14 @@ the terminal and also writes its own log in the work directory):
 ```bash
 qsub -V -N cassis -l select=1:ncpus=28 -l walltime=6:00:00 -j oe -o cassis_qsub.log -- \
   /path/to/CassisPipeline/bin/cassis_process.sh \
-  cassis_jezero.conf 5 8 rerun $(pwd)
+  cassis_jezero.conf 5 8 jezero_out $(pwd)
 ```
 
 The -V flag exports your activated environment (PATH, PROJ_DATA, ISISROOT, and
 the rest) to the compute node, which otherwise starts clean. The worker changes
 into the work directory and writes its own log there. You can also run this set
-of stages several times in parallel with different run tags and parameter choices
-to compare results.
+of stages several times in parallel with different output directories and
+parameter choices to compare results.
 
 The stages within this group are:
 
@@ -341,9 +357,10 @@ The stages within this group are:
   Documented at
   [Optional refinement](https://stereopipeline.readthedocs.io/en/latest/examples/cassis.html#cassis-refine).
 
-The delivered DEM is `cassis_dem_on_ctx.tif`, under the pair directory in the
-work directory, in `<pairDir>/frame/<runTag>_stereo/`. Beside it are its hillshade,
-the geodiff to CTX, and the max-triangulation-error mosaic. Compare the DEM to the
+The delivered DEM is `cassis_dem_on_ctx.tif`, under the output directory, in
+`<outDir>/frame/pass2_stereo/` (or `pass1_stereo/` if pass 2 was not run). Beside
+it are its hillshade, the geodiff to CTX, and the max-triangulation-error mosaic.
+Compare the DEM to the
 CTX reference with geodiff for the vertical difference and by hillshade image
 correlation for the horizontal registration, as in
 [Evaluation](https://stereopipeline.readthedocs.io/en/latest/examples/cassis.html#cassis-eval).

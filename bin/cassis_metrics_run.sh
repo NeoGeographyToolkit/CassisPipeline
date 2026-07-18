@@ -2,9 +2,9 @@
 # cassis_metrics_run.sh - run cassis_process.sh with per-stage metrics. Starts a background node
 # sampler (load, RAM, cpupercent every 30s) alongside the pipeline, so utilization can be sliced by
 # stage using cassis_process's own stage START/DONE timestamps. Dumps final qstat resources at the end.
-# Args (B LAST): <cfg> <fromStage> <toStage> <tagBase> <B>
+# Args (B LAST): <cfg> <fromStage> <toStage> <outDir> <B>
 set +e; umask 022
-cfg=${1:?cfg}; from=${2:?fromStage}; to=${3:?toStage}; tagBase=${4:?tagBase}; B=${5:?B (LAST)}
+cfg=${1:?cfg}; from=${2:?fromStage}; to=${3:?toStage}; outDir=${4:?outDir}; B=${5:?B (LAST)}
 # The ASP and ISIS tools must be on PATH and the environment set up beforehand.
 # See the repository README, Environment section.
 cd "$B" || { echo "ERROR cannot cd $B"; exit 1; }
@@ -26,7 +26,7 @@ echo "=== metrics run START $(date) host=$(uname -n) nick=$nick stages $from..$t
 SPID=$!
 
 t0=$(date +%s)
-bash cassis_process.sh "$cfg" "$from" "$to" "$tagBase" "$B"
+bash cassis_process.sh "$cfg" "$from" "$to" "$outDir" "$B"
 rc=$?
 kill "$SPID" 2>/dev/null
 echo "=== metrics run DONE rc=$rc $(date) total=$(( $(date +%s) - t0 ))s ==="
