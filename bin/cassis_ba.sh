@@ -1,5 +1,5 @@
 #!/bin/bash
-# cassis_ba.sh - UNIVERSAL joint BA (the bundle step of one tic/toc stage). Distortion is FROZEN
+# cassis_ba.sh - UNIVERSAL joint BA (the bundle step of one tic/toc stage). Distortion is FIXED
 # by default; it can OPTIONALLY be floated (distortion-only, shared across all framelets) via the intrFloat
 # arg - the Jezero/Oxia jzexp1b recipe. FULLY PARAMETERIZED, NO hardcoded cameras or site:
 # the INPUT image-list + camera-list are params (any stage's cams - the start cams, or a previous
@@ -10,7 +10,7 @@
 # ARGS (no hardcode).
 # Args (B LAST): <outDir> <outTag> <imgList> <camList> <refDem> <matchpfx> <htUnc> <camPosUnc>
 #   <gcpFile|no_gcp> <fixgcp:yes|no> <robust> <intrFloat:yes_intr_float|no_intr_float> <B>
-#   (no_gcp = the honest sentinel for "no ground control"; intrFloat = float distortion-only or keep frozen)
+#   (no_gcp = the honest sentinel for "no ground control"; intrFloat = float distortion-only or keep fixed)
 set +e; umask 022
 outDir=${1:?outDir}; outTag=${2:?outTag}; imgList=${3:?imgList}; camList=${4:?camList}
 refDem=${5:?refDem}; matchpfx=${6:?matchpfx}; htUnc=${7:?htUnc}; camPosUnc=${8:?camPosUnc}
@@ -38,7 +38,7 @@ if [ "$gcp" != no_gcp ]; then
   echo "GCP: $gcp ($(grep -vc '^#' "$gcp") points) fix-gcp-xyz=$fixgcp"
 fi
 
-# Intrinsics: FROZEN by default; yes_intr_float floats distortion ONLY, shared across all framelets
+# Intrinsics: FIXED by default; yes_intr_float floats distortion ONLY, shared across all framelets
 # (the Jezero/Oxia jzexp1b recipe). Focal/optical stay fixed. no_intr_float = no --solve-intrinsics.
 intrOpt=""
 if [ "$intrFloat" = yes_intr_float ]; then
@@ -47,11 +47,11 @@ if [ "$intrFloat" = yes_intr_float ]; then
 elif [ "$intrFloat" != no_intr_float ]; then
   echo "ERROR bad intrFloat=$intrFloat (want yes_intr_float|no_intr_float)"; exit 1
 else
-  echo "INTRINSICS: frozen"
+  echo "INTRINSICS: fixed"
 fi
 echo "robust-threshold=$robust"
 
-# Joint BA: htdem pin to CTX, poses on a leash, distortion frozen or floated per intrFloat.
+# Joint BA: htdem pin to CTX, poses on a leash, distortion fixed or floated per intrFloat.
 bundle_adjust \
   --image-list "$imgList" \
   --camera-list "$camList" \

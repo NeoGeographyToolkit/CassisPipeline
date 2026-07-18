@@ -20,20 +20,10 @@ The work splits into two tiers.
 Planetary Science Archive, download the published CaSSIS DEM, download the SPICE
 kernels, ingest the framelets to ISIS cubes, generate a CSM camera per framelet,
 build the CTX reference DEM for the site, and make the blurred low-resolution
-mapproj DEM from it. These steps need network access and human inspection, and
-each is its own small tool, so Tier 1 is run on a local machine, by hand. It
-produces the inputs the site config names: the framelet cubs, the cameras,
-`refDem`, and `mapprojDem`.
+mapproj DEM from it. These steps need network access and careful inspection.
 
-**Tier 2, data processing.** Turn those inputs into the registered CaSSIS DEM:
-build a preliminary linescan DEM and align it to CTX, refit the lens distortion,
-compute dense matches, bundle-adjust, run pairwise stereo, blend, and register to
-CTX. These stages are automatic and need little user input, so they are driven by
-a single master script, `cassis_process.sh`, as numbered stages 1 through 8, and
-usually run on a remote or multi-core machine (a batch job).
-
-So Tier 1 is the manual, network-and-inspection setup on a local machine, and
-Tier 2 is the automatic processing, normally on a remote machine.
+**Tier 2, data processing.** This step is automated and creates the registered
+CaSSIS DEM. They are usually run on a remote multi-core machine.
 
 ## Repository layout
 
@@ -62,9 +52,9 @@ Extract it in the current directory.
 Each command below will be practiced on it. The commands will exit quickly if
 the outputs they are supposed to create already exist.
 
-A site's inputs live in its config file, which the pipeline sources as shell
-variables (`inputCassisDir`, `Llook`, `Rlook`, `refDem`, `mapprojDem`; see
-Configuration below). For the sample commands below, source the Jezero config so
+A site's inputs are specified in its config file, which the pipeline treats as
+shell variables (*inputCassisDir*, *Llook*, *Rlook*, *refDem*, *mapprojDem*). See
+Configuration below. For the sample commands below, source the Jezero config so
 the same variables are available in the shell:
 
 ```bash
@@ -84,22 +74,23 @@ mapprojDem=ref/jezero_ctx/jezero_ctx_18m_blur5.tif   # blurred CTX DEM
 ## Tier 1: data ingestion
 
 Run on a local machine, with network access and inspection. Each step below is
-its own small tool. Tier 1 produces the inputs the site config names: the framelet
-cubs, the cameras, `refDem`, and `mapprojDem`.
+its own small tool. Tier 1 produces the inputs the site config names: the
+framelet cubs, the cameras, the reference CTX DEM, and its lower-resolution
+version for mapprojection.
 
 ### Download and create the cube files
 
 This step downloads the framelets, and ingests them to ISIS cubes. It needs an
 ISIS environment. Set up the
 [ISIS environment](https://stereopipeline.readthedocs.io/en/latest/examples/cassis.html#cassis-isis-env)
-described in the ASP documentation, then activate it and set `ISISROOT` (the ISIS
-installation, its conda prefix) and `ISISDATA` (the ISIS data tree, which holds
+described in the ASP documentation, then activate it and set ISISROOT (the ISIS
+installation, its conda prefix) and ISISDATA (the ISIS data tree, which holds
 the TGO/CaSSIS kernels).
 
 Fetch the calibrated PAN framelets for both looks (framelet collections) from
-the ESA PSA, into `inputCassisDir` (the fetch groups them as `L1_<Llook>` and
-`L2_<Rlook>` there, but the pipeline later finds each look by its id in the cube
-filenames, so any layout works) ([Fetching the
+the ESA PSA, into *inputCassisDir* (the fetch groups them into an L1 and an L2
+subdirectory, named by look id, but the pipeline later finds each look by its id
+in the cube filenames, so any layout works) ([Fetching the
 framelets](https://stereopipeline.readthedocs.io/en/latest/examples/cassis.html#cassis-fetch)):
 
 Example for the Jezero site:
@@ -109,7 +100,7 @@ cassis_fetch_pair.sh 16378 $Llook $Rlook $inputCassisDir
 ```
 
 Here, 16378 is the orbit number, the middle field of the observation id
-MY36_016378_162. The observation id and its two look ids (Llook and Rlook) come
+MY36_016378_162. The observation id and its two look ids (*Llook* and *Rlook*) come
 from the ESA Planetary Science Archive when selecting a CaSSIS stereo pair.
 
 Download the SPICE kernels
@@ -142,19 +133,22 @@ export ALESPICEROOT=$ISISDATA           # ALE metakernel directory
 cassis_make_cameras.sh $inputCassisDir
 ```
 
-The camera step needs `ISISDATA` (the ISIS data tree) and `ALESPICEROOT` (the ALE
-SPICE root, where `isd_generate` finds the CaSSIS metakernels; no `spiceinit` is
+The camera step needs ISISDATA (the ISIS data tree) and ALESPICEROOT (the ALE
+SPICE root, where *isd_generate* finds the CaSSIS metakernels; no *spiceinit* is
 run). These are usually set to the same value.
 
 Both ingest and camera scripts scan the per-look subdirectories under the given
-data root and are idempotent, so a re-run only fills in what is missing. Do not mix
-the two environments. Preparing the prior CaSSIS DEM used only for comparison is at
+data root and are idempotent, so a re-run only fills in what is missing. 
+
+Do not mix the two environments. 
+
+Preparing the prior CaSSIS DEM used only for comparison is at
 [Prior CaSSIS DEM](https://stereopipeline.readthedocs.io/en/latest/examples/cassis.html#cassis-published-dem).
 
 ### Build the CTX reference DEM and the blurred mapproj DEM
 
-Assemble the CTX reference DEM (`refDem`) for the site from existing CTX DEMs, and
-make the low-resolution blurred mapproj DEM (`mapprojDem`) from it. See the
+Assemble the CTX reference DEM (*refDem*) for the site from existing CTX DEMs, and
+make the low-resolution blurred mapproj DEM (*mapprojDem*) from it. See the
 [documentation](https://stereopipeline.readthedocs.io/en/latest/examples/cassis.html#cassis-ctx-ref).
 
 ```bash
@@ -164,18 +158,14 @@ cassis_ctx_build.sh VENDOR_DTM LAT0 LON0 OUTDIR TAG
 See the script header for the arguments. LAT0 and LON0 are the site center; for
 Jezero they are near latitude 18.4, longitude 77.5. This step needs attention, as
 some sites may lack good prior CTX coverage. Check that both the reference DEM and
-the mapproj DEM were produced, then set `refDem` and `mapprojDem` in the site
+the mapproj DEM were produced, then set *refDem* and *mapprojDem* in the site
 config.
 
-`cassis_ctx_build.sh` produces both the reference DEM and the blurred mapproj DEM.
-If you already have the CTX reference DEM and only need the blurred mapproj DEM,
-make it yourself with `dem_mosaic --dem-blur-sigma` (a sigma of 5 is suggested)
-and set `mapprojDem` to the result. This blur is documented in the ASP
-[Preparation of reference CTX DEM](https://stereopipeline.readthedocs.io/en/latest/examples/cassis.html#cassis-ctx-ref)
-section of cassis.rst. `mapprojDem` is a required input for Tier 2.
+*cassis_ctx_build.sh* produces both the reference DEM and the blurred mapproj
+DEM. See the ASP [Preparation of reference CTX
+DEM](https://stereopipeline.readthedocs.io/en/latest/examples/cassis.html#cassis-ctx-ref).
 
-The Jezero sample already ships the finished `ref/jezero_ctx/*` (the CTX reference
-and the mapproj DEM), so this step is not run for it.
+The Jezero sample has these two products.
 
 ## Tier 2: data processing
 
@@ -186,7 +176,7 @@ First, a recent ASP release is needed, from 2026/7 or later, from the [releases
 page](https://github.com/NeoGeographyToolkit/StereoPipeline/releases). Such a
 recent build has the CaSSIS camera support.
 
-Second, the `usgscsm_cassis` environment from the camera step above should be
+Second, the *usgscsm_cassis* environment from the camera step above should be
 activated. It provides gdal and proj. Activate it, and put the pipeline and ASP on
 the PATH:
 
@@ -197,7 +187,7 @@ export PATH=/path/to/CassisPipeline/bin:/path/to/StereoPipeline/bin:$PATH
 
 Each script also checks up front that the environment is active (CONDA_PREFIX
 set) and that the tools it needs are on PATH. Camera generation uses the
-environment's own isd_generate, via CONDA_PREFIX.
+environment's own *isd_generate*, via CONDA_PREFIX.
 
 ### Configuration
 
@@ -206,30 +196,30 @@ which live in the work directory, not in this repository. Example copies
 are in the config directory. Both are sourced as shell variables.
 
 The config directory ships a ready per-site config for every site in the ASP
-documentation: `cassis_jezero.conf`, `cassis_ox1.conf`, `cassis_ox2.conf`,
-`cassis_gusev.conf`, and `cassis_004756.conf`, plus the shared
-`cassis_common.conf`. Copy the pair you need into the work directory.
+documentation: *cassis_jezero.conf*, *cassis_ox1.conf*, *cassis_ox2.conf*,
+*cassis_gusev.conf*, and *cassis_004756.conf*, plus the shared
+*cassis_common.conf*. Copy the pair you need into the work directory.
 
-- cassis_common.conf holds the shared recipe constants (grid resolutions,
-  bundle-adjustment uncertainties, the frozen lens coefficients, dense-match
-  settings). It normally does not need editing. The lens coefficients are a global
-  CaSSIS instrument constant, reused as is for every site.
-- cassis_siteName.conf (for example cassis_jezero.conf) holds only the per-site
-  inputs, listed above under Reference data: inputCassisDir, Llook, Rlook, refDem,
-  and mapprojDem. The two looks are found by their id in the cube filenames, so
-  inputCassisDir can be any directory that holds them. The output directory is not
+- *cassis_common.conf* holds the shared recipe constants (grid resolutions,
+  bundle-adjustment uncertainties, the optimized and fixed lens coefficients,
+  dense-match settings). It normally does not need editing. The lens coefficients
+  are a global CaSSIS instrument constant, reused as is for every site.
+- *cassis_siteName.conf* (for example *cassis_jezero.conf*) holds only the per-site
+  inputs, listed above under Reference data: *inputCassisDir*, *Llook*, *Rlook*, *refDem*,
+  and *mapprojDem*. The two looks are found by their id in the cube filenames, so
+  *inputCassisDir* can be any directory that holds them. The output directory is not
   in the config (it changes per run); it is passed on the command line (see Running).
 
 Every path in the site config is relative to the work directory unless it is
 absolute. Copy the two sample files into the work directory, edit every path to
 point at the data, and confirm each named file exists. The pipeline also checks
 this up front and fails fast, so a wrong path does not waste a long batch job. The
-Jezero sample already ships an edited cassis_jezero.conf, so for the sample there
+Jezero sample already ships an edited *cassis_jezero.conf*, so for the sample there
 is nothing to change.
 
 ### Running
 
-With the Tier 1 inputs in place (cubs, cameras, `refDem`, `mapprojDem`), the
+With the Tier 1 inputs in place (cubs, cameras, *refDem*, *mapprojDem*), the
 master script runs the whole processing chain, stages 1 through 8:
 
 ```bash
@@ -240,7 +230,7 @@ The five arguments are the site config, the first and last stage to run (1 to 8)
 the output directory, and the work directory. All outputs go under outDir, which
 can be any path and changes per run. Reuse an outDir to resume (each stage skips
 outputs that already exist); use a fresh outDir for a clean run. To run or inspect
-one stage at a time, set the same number for both, for example `1 1`, then `2 2`.
+one stage at a time, set the same number for both, for example *1 1*, then *2 2*.
 
 Each stage is also documented on its own below, so a stage can be run or inspected
 individually. The quickest way to try the pipeline without any preparation is to
@@ -276,7 +266,7 @@ cassis_align_cams.sh cassis_jezero.conf jezero_out $(pwd)
 ```
 
 It finds the stage-1 transform and writes the aligned camera states under
-`<outDir>/linescan/linescan_dem/cams_aligned/`. This and stage 3 consume stage-1
+*outDir*/linescan/linescan_dem/cams_aligned/. This and stage 3 consume stage-1
 and stage-2 intermediates, which the sample does not ship (they are large and
 regenerated), so they run only in a from-scratch pass; starting from the sample
 the run skips straight to stage 5 with the provided cameras. Documented at
@@ -297,7 +287,8 @@ Check that a frame camera was written per framelet. Documented at
 
 ### Stage 4, refit the lens distortion
 
-Refits a single frozen transverse-distortion model and sets it on the cameras.
+Refits a single optimized and fixed transverse-distortion model and sets it on
+the cameras.
 
 Example for the Jezero site (both looks in one call):
 
@@ -336,7 +327,7 @@ The stages within this group are:
 
 - Stage 5, apply the corrected lens distortion and refit the pose. Documented at
   [Distortion refit](https://stereopipeline.readthedocs.io/en/latest/examples/cassis.html#cassis-refit).
-- Stage 6, compute dense interest-point matches (cassis_stereo.sh). If matches
+- Stage 6, compute dense interest-point matches (*cassis_stereo.sh*). If matches
   are absent, start the run at stage 6. Documented at
   [Dense matches](https://stereopipeline.readthedocs.io/en/latest/examples/cassis.html#cassis-dense-matches).
 - Stage 7, pass 1: bundle adjustment, pairwise stereo, blending, and registration
@@ -349,8 +340,8 @@ The stages within this group are:
   Documented at
   [Optional refinement](https://stereopipeline.readthedocs.io/en/latest/examples/cassis.html#cassis-refine).
 
-The delivered DEM is `cassis_dem_on_ctx.tif`, under the output directory, in
-`<outDir>/frame/pass2_stereo/` (or `pass1_stereo/` if pass 2 was not run). Beside
+The delivered DEM is *cassis_dem_on_ctx.tif*, under the output directory, in
+*outDir*/frame/pass2_stereo/ (or *pass1_stereo/* if pass 2 was not run). Beside
 it are its hillshade, the geodiff to CTX, and the max-triangulation-error mosaic.
 Compare the DEM to the
 CTX reference with geodiff for the vertical difference and by hillshade image

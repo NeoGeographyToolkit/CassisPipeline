@@ -9,7 +9,7 @@
 #       affineepipolar) stereo with --num-matches-from-disparity, and EMIT the matches to
 #       <matchPrefix>-<a>__<b>.match (no DEM). geounc here is a pre-BA search COLLAR (> 0): the cameras
 #       are not yet refined, so real IPs carry disparity that a 0 collar would filter out.
-# Cameras come from imgList/camList either way (a BA stage's frozen cams for DEM, the transverse refit
+# Cameras come from imgList/camList either way (a BA stage's fixed cams for DEM, the transverse refit
 # cams for dense). FULLY PARAMETERIZED, NO site/obsID/env-default:
 #   - images to mapproject come from the BA's OWN run-image_list.txt (that stage's framelets), not a glob.
 #   - cameras come from the BA's run-camera_list.txt (1-1 with the images).

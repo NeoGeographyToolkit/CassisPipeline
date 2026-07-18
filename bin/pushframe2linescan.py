@@ -3,9 +3,9 @@
 # SENSOR_MODEL) over an already-assembled strip into a LINESCAN ISD
 # (USGS_ASTRO_LINE_SCANNER_SENSOR_MODEL) over the SAME strip.
 #
-# WHY (Oleg's theory, see cassis_pushframe_notes.sh entry 12): the push-frame
+# WHY: the push-frame
 # image->ground quantizes line -> integer framelet -> ONE time per framelet, so
-# pose (position AND orientation) is FROZEN within a framelet and STEPS at every
+# pose (position AND orientation) is CONSTANT within a framelet and STEPS at every
 # boundary -> framelet-period seams in the DEM. A linescan over the same strip
 # gives each line a CONTINUOUS Lagrange-interpolated pose -> the "glorified
 # linescan". This script does that with NO C++ change, to test the hypothesis.
