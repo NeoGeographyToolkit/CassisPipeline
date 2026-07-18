@@ -79,7 +79,7 @@ inputCassisDir=data/jezero/MY36_016378_162           # any dir holding the two l
 Llook=838849161                                      # left look id (ESA)
 Rlook=838849162                                      # right look id
 refDem=ref/jezero_ctx/jezero_ctx_18m.tif             # CTX reference DEM
-mapprojDem=ref/jezero_ctx/jezero_ctx_18m_blur5.tif   # blurred CTX drape for mapprojection
+mapprojDem=ref/jezero_ctx/jezero_ctx_18m_blur5.tif   # blurred CTX DEM
 ```
 
 ## Data ingestion
