@@ -22,6 +22,10 @@ echo "cassis_corr: in=$in ref=$ref res=$res search=$S out=$out"
 # FALLBACK to the old full-extent warp of both if ref res != <res>, the window is degenerate, or the
 # two outputs end up different sizes (a hard co-grid ASSERT: a size mismatch = an unphysical dd shift).
 # Use GDAL CLI (PBS python3 lacks osgeo). Strip gdalsrsinfo's leading blank line for -t_srs.
+# TODO(oalexan1): consider taking the grid, projection, and extent from the FIRST DEM (the
+# ASP-processed CaSSIS DEM) and conforming the CTX to it, instead of the reverse. The CaSSIS
+# DEM is the ASP product and is usually the grid we want to preserve. Not done now: in current
+# runs the CaSSIS DEM is already regridded onto the CTX, so this only matters if that changes.
 gdalsrsinfo -o wkt "$ref" | sed '/^[[:space:]]*$/d' > $out/_srs.wkt
 do_fullwarp(){
   local TE
