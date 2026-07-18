@@ -8,6 +8,9 @@
 # cassis_make_cameras.sh. NO `set -u` (conda hooks use unbound vars).
 #   Arg: $1 = site data root; the looks are its L*_* subdirectories.
 SITEDATA=${1:?usage: cassis_ingest_cubes.sh <site data root>}
+source cassis_env_check.sh
+cassis_require_isisdata
+cassis_require tgocassis2isis editlab
 LOCK=/tmp/cassis_ingest_$(echo "$SITEDATA" | tr '/' '_').lock
 mkdir "$LOCK" 2>/dev/null || { echo "another ingest running (lock $LOCK); exit"; exit 0; }
 trap 'rmdir "$LOCK" 2>/dev/null' EXIT

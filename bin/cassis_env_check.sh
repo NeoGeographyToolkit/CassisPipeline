@@ -21,13 +21,24 @@ cassis_require() {
   [ "$miss" -eq 0 ] || { echo "  Activate the correct environment or put the tool on PATH (README Environment section)."; exit 1; }
 }
 
-# cassis_require_ale - the CaSSIS camera step needs the conda env's ALE and CSM plugin (not ASP's
-# likely-older bundled copies) plus gdal. Verify they are present.
+# cassis_require_isisdata - ISISDATA (the ISIS data tree) must be set and exist. Every step that
+# touches ISIS data or kernels needs it (cassis2isis and isd_generate both).
+cassis_require_isisdata() {
+  [ -n "${ISISDATA:-}" ] || { echo "ERROR: ISISDATA is not set (the ISIS data tree). Set it before running."; exit 1; }
+  [ -d "$ISISDATA" ] || { echo "ERROR: ISISDATA=$ISISDATA does not exist."; exit 1; }
+}
+
+# cassis_require_ale - the CaSSIS camera step (isd_generate) needs the conda env's ALE + CSM plugin
+# (not ASP's older bundled copies) + gdal, plus two data roots: ISISDATA (ISIS data tree) and
+# ALESPICEROOT (the ALE SPICE / metakernel data, where isd_generate finds the CaSSIS metakernels).
 cassis_require_ale() {
   cassis_require gdal_translate
   [ -x "$CONDA_PREFIX/bin/isd_generate" ] || { echo "ERROR: $CONDA_PREFIX/bin/isd_generate not found. Activate the CaSSIS ALE/usgscsm environment."; exit 1; }
   ls "$CONDA_PREFIX"/lib/libale* >/dev/null 2>&1 || { echo "ERROR: libale not found in $CONDA_PREFIX/lib (a recent ALE with CaSSIS support is required)."; exit 1; }
   ls "$CONDA_PREFIX"/lib/csmplugins/libusgscsm* >/dev/null 2>&1 || { echo "ERROR: libusgscsm CSM plugin not found in $CONDA_PREFIX/lib/csmplugins."; exit 1; }
+  cassis_require_isisdata
+  [ -n "${ALESPICEROOT:-}" ] || { echo "ERROR: ALESPICEROOT is not set (the ALE SPICE/metakernel data). isd_generate needs it for the CaSSIS metakernels."; exit 1; }
+  [ -d "$ALESPICEROOT" ] || { echo "ERROR: ALESPICEROOT=$ALESPICEROOT does not exist."; exit 1; }
 }
 
 # cassis_isd_generate <args> - run the conda env's isd_generate (never ASP's). On failure, hint at ALE.
