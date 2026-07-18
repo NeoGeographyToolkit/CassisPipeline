@@ -32,7 +32,7 @@ network access.
 dense interest-point matches, then run bundle adjustment, pairwise stereo, DEM
 blending, and registration to CTX. This part is meant for a multi-core machine.
 
-Because Tiers 1 and 2 need kernels and network while Tier 3 is heavy compute, he
+Because Tiers 1 and 2 need kernels and network while Tier 3 is heavy compute, the
 former should be run on a local machine, and the heavy stages should be a batch
 job.
 
@@ -51,7 +51,7 @@ Add the bin directory to the PATH.
 
 A reference [Jezero site dataset](https://github.com/NeoGeographyToolkit/CassisPipeline/releases/tag/jezero-reference) is provided.
 
-It has the the site configuration, the framelet cubes, the original CSM cameras,
+It has the site configuration, the framelet cubes, the original CSM cameras,
 the registered and distortion-corrected cameras, the CTX reference DEM, the
 coarser CTX mapprojection DEM, the preliminary CaSSIS linescan DEM aligned to
 CTX, and the final produced CaSSIS DEM with its evaluation products.
@@ -66,11 +66,20 @@ the outputs they are supposed to create already exist.
 A site's inputs live in its config file, which the pipeline sources as shell
 variables (`inputCassisDir`, `Llook`, `Rlook`, `refDem`, `mapprojDem`; see
 Configuration below). For the sample commands below, source the Jezero config so
-the same variables are available in your shell:
+the same variables are available in the shell:
 
 ```bash
 source cassis_jezero.conf
-# now $inputCassisDir, $Llook, $Rlook, $refDem, $mapprojDem are set
+```
+
+Here is the contents of this file. We will use these as shell variables below.
+
+```bash
+inputCassisDir=data/jezero/MY36_016378_162           # any dir holding the two looks' cubs
+Llook=838849161                                      # left look id (ESA)
+Rlook=838849162                                      # right look id
+refDem=ref/jezero_ctx/jezero_ctx_18m.tif             # CTX reference DEM
+mapprojDem=ref/jezero_ctx/jezero_ctx_18m_blur5.tif   # blurred CTX drape for mapprojection
 ```
 
 ## Data ingestion
@@ -88,31 +97,25 @@ the ESA PSA, into `inputCassisDir` (the fetch groups them as `L1_<Llook>` and
 filenames, so any layout works) ([Fetching the
 framelets](https://stereopipeline.readthedocs.io/en/latest/examples/cassis.html#cassis-fetch)):
 
-```bash
-cassis_fetch_pair.sh <orbit> <Llook> <Rlook> <inputCassisDir>
-```
-
-For the Jezero sample:
+Example for the Jezero site:
 
 ```bash
 cassis_fetch_pair.sh 16378 $Llook $Rlook $inputCassisDir
 ```
+
+Here, 16378 is the orbit number, the middle field of the observation id
+MY36_016378_162. The observation id and its two look ids (Llook and Rlook) come
+from the ESA Planetary Science Archive when selecting a CaSSIS stereo pair.
 
 Download the SPICE kernels
 ([Downloading the SPICE kernels](https://stereopipeline.readthedocs.io/en/latest/examples/cassis.html#cassis-kernels)).
 
 Ingest each framelet to an ISIS cube ([Ingesting to ISIS
 cubes](https://stereopipeline.readthedocs.io/en/latest/examples/cassis.html#cassis-ingest)),
-both in the ISIS environment:
+both in the ISIS environment. Example for the Jezero site:
 
 ```bash
 conda activate isis10
-cassis_ingest_cubes.sh <inputCassisDir>
-```
-
-For the Jezero sample:
-
-```bash
 cassis_ingest_cubes.sh $inputCassisDir
 ```
 
@@ -124,14 +127,10 @@ and USGSCSM environment, described under
 in the ASP documentation. Set it up and activate it. This environment also
 provides gdal, numpy, and scipy, so it is reused by the processing stages below.
 
+Example for the Jezero site:
+
 ```bash
 conda activate usgscsm_cassis
-cassis_make_cameras.sh <inputCassisDir>
-```
-
-For the Jezero sample:
-
-```bash
 cassis_make_cameras.sh $inputCassisDir
 ```
 
@@ -148,10 +147,10 @@ First, a recent ASP release, from 2026/7 or later, from the
 [releases page](https://github.com/NeoGeographyToolkit/StereoPipeline/releases).
 That build is required, as it carries the CaSSIS camera support and its own ISIS.
 It is a self-contained release, unpacked from the releases page, not installed
-through conda; its tool wrappers set ISISROOT for you.
+through conda; its tool wrappers set ISISROOT automatically.
 
 Second, the `usgscsm_cassis` environment from the camera step above, which provides
-gdal and proj. Activate it, and put the pipeline and ASP on your PATH:
+gdal and proj. Activate it, and put the pipeline and ASP on the PATH:
 
 ```bash
 conda activate usgscsm_cassis
@@ -166,13 +165,13 @@ older copy bundled with ASP.
 
 ### Configuration
 
-The scripts are generic, so you tell the pipeline about your data through two
-files, which live in your work directory, not in this repository. Example copies
+The scripts are generic; the pipeline learns about the data through two files,
+which live in the work directory, not in this repository. Example copies
 are in the config directory. Both are sourced as shell variables.
 
 - cassis_common.conf holds the shared recipe constants (grid resolutions,
   bundle-adjustment uncertainties, the frozen lens coefficients, dense-match
-  settings). You normally do not edit it. The lens coefficients are a global
+  settings). It normally does not need editing. The lens coefficients are a global
   CaSSIS instrument constant, reused as is for every site.
 - cassis_siteName.conf (for example cassis_jezero.conf) holds only the per-site
   inputs. The shipped cassis_jezero.conf is:
@@ -190,8 +189,8 @@ are in the config directory. Both are sourced as shell variables.
   (it changes per run); it is passed on the command line (see Running).
 
 Every path in the site config is relative to the work directory unless it is
-absolute. Copy the two sample files into your work directory, edit every path to
-point at your data, and confirm each named file exists. The pipeline also checks
+absolute. Copy the two sample files into the work directory, edit every path to
+point at the data, and confirm each named file exists. The pipeline also checks
 this up front and fails fast, so a wrong path does not waste a long batch job. The
 Jezero sample already ships an edited cassis_jezero.conf, so for the sample there
 is nothing to change.
@@ -243,11 +242,7 @@ Merges each CaSSIS look into a single image, creates a linescan camera, and
 makes a first DEM, aligned to the coarse CTX reference whose grid and projection
 drive every output. Needs the framelet cubes and cameras from ingestion.
 
-```bash
-cassis_linescan_dem.sh <site.conf> <outDir> <workdir>
-```
-
-For the Jezero sample, from inside the unpacked directory:
+Example for the Jezero site, from inside the unpacked directory:
 
 ```bash
 cassis_linescan_dem.sh cassis_jezero.conf jezero_out $(pwd)
@@ -261,11 +256,7 @@ Check that the linescan DEM was produced under the work directory. Documented at
 Carries the alignment transform found in stage 1 onto the tied linescan cameras,
 producing the CTX-aligned linescan camera states.
 
-```bash
-cassis_align_cams.sh <site.conf> <outDir> <workdir>
-```
-
-For the Jezero sample:
+Example for the Jezero site:
 
 ```bash
 cassis_align_cams.sh cassis_jezero.conf jezero_out $(pwd)
@@ -275,18 +266,14 @@ It finds the stage-1 transform and writes the aligned camera states under
 `<outDir>/linescan/linescan_dem/cams_aligned/`. This and stage 3 consume stage-1
 and stage-2 intermediates, which the sample does not ship (they are large and
 regenerated), so they run only in a from-scratch pass; starting from the sample
-you skip straight to stage 5 with the provided cameras. Documented at
+the run skips straight to stage 5 with the provided cameras. Documented at
 [Initial registration](https://stereopipeline.readthedocs.io/en/latest/examples/cassis.html#cassis-init-reg).
 
 ### Stage 3, split into frame cameras
 
 Splits the registered linescan cameras back into per-framelet frame cameras.
 
-```bash
-linescan2framelets.sh <site.conf> <outDir> <workdir>
-```
-
-For the Jezero sample (both looks in one call):
+Example for the Jezero site (both looks in one call):
 
 ```bash
 linescan2framelets.sh cassis_jezero.conf jezero_out $(pwd)
@@ -299,11 +286,7 @@ Check that a frame camera was written per framelet. Documented at
 
 Refits a single frozen transverse-distortion model and sets it on the cameras.
 
-```bash
-refit_transverse.sh <site.conf> <outDir> <workdir>
-```
-
-For the Jezero sample (both looks in one call):
+Example for the Jezero site (both looks in one call):
 
 ```bash
 refit_transverse.sh cassis_jezero.conf jezero_out $(pwd)
@@ -317,16 +300,11 @@ Check the registered, distortion-corrected cameras. Documented at
 These are the compute-intensive part and are meant to be run together as one
 batch job, not one at a time. On a PBS or qsub cluster, for example NASA Pleiades,
 submit them as a job and adapt the queue, account, node model, core count, and
-walltime to your system:
+walltime to the target system:
 
-```bash
-qsub -V -N cassis -l select=1:ncpus=28 -l walltime=6:00:00 -j oe -o cassis_qsub.log -- \
-  /path/to/CassisPipeline/bin/cassis_process.sh \
-  cassis_siteName.conf 5 8 outDir /path/to/workdir
-```
-
-For the Jezero sample, from inside the unpacked directory (the master prints to
-the terminal and also writes its own log in the work directory):
+Example for the Jezero site, from inside the unpacked directory (the master prints
+to the terminal and also writes its own log in the work directory; adapt the
+queue, account, node model, core count, and walltime to the target system):
 
 ```bash
 qsub -V -N cassis -l select=1:ncpus=28 -l walltime=6:00:00 -j oe -o cassis_qsub.log -- \
@@ -334,10 +312,10 @@ qsub -V -N cassis -l select=1:ncpus=28 -l walltime=6:00:00 -j oe -o cassis_qsub.
   cassis_jezero.conf 5 8 jezero_out $(pwd)
 ```
 
-The -V flag exports your activated environment (PATH, PROJ_DATA, ISISROOT, and
+The -V flag exports the activated environment (PATH, PROJ_DATA, ISISROOT, and
 the rest) to the compute node, which otherwise starts clean. The worker changes
-into the work directory and writes its own log there. You can also run this set
-of stages several times in parallel with different output directories and
+into the work directory and writes its own log there. This set of stages can also
+be run several times in parallel with different output directories and
 parameter choices to compare results.
 
 The stages within this group are:
