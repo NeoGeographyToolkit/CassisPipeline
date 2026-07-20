@@ -287,6 +287,16 @@ dem_mosaic --threads $THR --max $errs --t_srs "$PROJ" --tr $demRes -o ${errmos}.
   && echo "  max tri-error mosaic: ${errmos}_on_ctx.tif" \
   || echo "  WARN max_tri_err mosaic skipped"
 
+# --- 6. per-look ortho image mosaic (standard product; native res, plain dem_mosaic, no --max) ---
+for lk in "$Llook" "$Rlook"; do
+  omaps=$(ls "$out"/maps/*"$lk"*.tif 2>/dev/null)
+  [ -n "$omaps" ] || { echo "  no mapproj framelets for look $lk - ortho mosaic skipped"; continue; }
+  ortho=$out/cassis_${lk}_ortho.tif
+  dem_mosaic $omaps --t_srs "$PROJ" --tr $res -o "$ortho" >> $out/mosaic.log 2>&1 \
+    && echo "  ortho mosaic (look $lk): $ortho" \
+    || echo "  WARN ortho mosaic for look $lk skipped"
+done
+
 echo "  frame DEM: ${mos}_on_ctx.tif"
 echo "  geodiff std vs CTX (vertical, m): $(gdalinfo -stats ${mos}_ctxdiff-diff.tif 2>/dev/null | grep STATISTICS_STDDEV | sed 's/.*=//')"
 echo "CASSIS_STEREO_DONE $outDir $tag $(date)"
