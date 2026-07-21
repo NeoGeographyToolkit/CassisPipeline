@@ -23,7 +23,7 @@ source "$B/$cfg"
 source cassis_env_check.sh
 cassis_require bundle_adjust parallel_stereo point2dem mapproject dem_mosaic geodiff gdalwarp gdalinfo
 matchpfx=${matchpfx:-$outDir/frame/dense/matches/run-disp}   # uniform; a config MAY override
-pass2Gcp=${pass2Gcp:-no_gcp}   # pass2 TOC gcp mode (no_gcp default; soft_gcp per site)
+pass2Gcp=${pass2Gcp:-no_gcp}   # pass2 TOC gcp mode: no_gcp default; soft_gcp is a general off-by-default option
 # linescanDem and startCamDir are derived from outDir by convention (a config MAY override).
 startCamDir=${startCamDir:-$outDir/frame/distortion_corrected_cassis_cams}
 linescanDem=${linescanDem:-$outDir/linescan/linescan_dem/align/aligned_oncoarse.tif}

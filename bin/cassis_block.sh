@@ -34,8 +34,9 @@ ticImg=$outDir/frame/${outTag}_tic/run-image_list.txt; ticCam=$outDir/frame/${ou
 # === [2] TOC: BA + htdem from the tic cams - vertical, keeps horizontal ===
 # TOC gcp mode: default no_gcp (pure vertical). soft_gcp reuses the INPUT gcp at its baked
 # sigma with fixgcp=no (a SOFT anchor, not fixed), to pull under-constrained END framelets toward CTX
-# without disturbing the well-behaved mid-strip. Used for ox1 where the strip ends drift; a per-site
-# choice, off by default so every other site is byte-identical to before.
+# without disturbing the well-behaved mid-strip. This is a GENERAL option that defaults OFF. Never
+# turn it on for one site only: a per-site tweak makes that site's result depend on a hidden knob a
+# user cannot reproduce from the shipped config. Enable it only if applied uniformly to all sites.
 tocGcp=no_gcp; tocFix=no
 if [ "$tocGcpMode" = soft_gcp ]; then
   [ -s "$inGcp" ] || { echo "STAGE_FAIL toc soft_gcp but inGcp missing $inGcp"; exit 1; }

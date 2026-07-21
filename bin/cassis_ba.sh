@@ -1,7 +1,7 @@
 #!/bin/bash
 # cassis_ba.sh - UNIVERSAL joint BA (the bundle step of one tic/toc stage). Distortion is FIXED
 # by default; it can OPTIONALLY be floated (distortion-only, shared across all framelets) via the intrFloat
-# arg - the Jezero/Oxia jzexp1b recipe. FULLY PARAMETERIZED, NO hardcoded cameras or site:
+# arg - the joint multi-site distortion solve. FULLY PARAMETERIZED, NO hardcoded cameras or site:
 # the INPUT image-list + camera-list are params (any stage's cams - the start cams, or a previous
 # stage's run-image_list.txt/run-camera_list.txt), plus refDem, dense matches, htUnc, camPosUnc, robust, an
 # OPTIONAL gcp (+ fix-gcp-xyz), and the intrFloat flag. OUTPUT = the experiment dir <outDir>/frame/<outTag>.
@@ -39,7 +39,7 @@ if [ "$gcp" != no_gcp ]; then
 fi
 
 # Intrinsics: FIXED by default; yes_intr_float floats distortion ONLY, shared across all framelets
-# (the Jezero/Oxia jzexp1b recipe). Focal/optical stay fixed. no_intr_float = no --solve-intrinsics.
+# (the joint multi-site distortion solve). Focal/optical stay fixed. no_intr_float = no --solve-intrinsics.
 intrOpt=""
 if [ "$intrFloat" = yes_intr_float ]; then
   intrOpt="--solve-intrinsics --intrinsics-to-share all --intrinsics-to-float distortion"

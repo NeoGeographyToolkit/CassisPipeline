@@ -139,7 +139,7 @@ demc=$al/ls_oncoarsegrid.tif
 gdalwarp -q -overwrite -t_srs "$srs" -te $XMIN $YMIN $XMAX $YMAX -ts $NX $NY -r cubicspline \
   "$dem" "$demc" > "$out/align_warp_src.txt" 2>&1
 # WINDOW coarse+demc to the linescan footprint + 20% margin BEFORE correlating, so the
-# correlator cannot lock onto a FAR spurious match on low-texture plains (the gusev 6km/58km bug).
+# correlator cannot lock onto a FAR spurious match on low-texture plains (a km-scale spurious-shift bug).
 read WX0 WY0 WX1 WY1 < <(python3 -c "
 from osgeo import gdal; import numpy as np
 d=gdal.Open('$demc'); b=d.GetRasterBand(1); nd=b.GetNoDataValue(); a=b.ReadAsArray()
