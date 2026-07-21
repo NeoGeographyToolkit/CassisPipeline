@@ -138,12 +138,16 @@ SPICE root, where *isd_generate* finds the CaSSIS metakernels; no *spiceinit* is
 run). These are usually set to the same value.
 
 Both ingest and camera scripts scan the per-look subdirectories under the given
-data root and are idempotent, so a re-run only fills in what is missing. 
+data root and are idempotent, so a re-run only fills in what is missing.
 
-Do not mix the two environments. 
+Do not mix the two environments.
 
 Preparing the prior CaSSIS DEM used only for comparison is at
 [Prior CaSSIS DEM](https://stereopipeline.readthedocs.io/en/latest/examples/cassis.html#cassis-published-dem).
+
+The prior CaSSIS DEM is aligned to the CTX with the same hillshade correlation
+approach used later for the CaSSIS images, described at
+[Alignment of prior CaSSIS DEMs to CTX](https://stereopipeline.readthedocs.io/en/latest/examples/cassis.html#cassis-prior-align).
 
 ### Build the CTX reference DEM and the blurred mapproj DEM
 
@@ -156,7 +160,7 @@ cassis_ctx_build.sh VENDOR_DTM LAT0 LON0 OUTDIR TAG
 ```
 
 See the script header for the arguments. LAT0 and LON0 are the site center; for
-Jezero they are near latitude 18.4, longitude 77.5. 
+Jezero they are near latitude 18.4, longitude 77.5.
 
 This step needs attention, as some sites may lack good prior CTX coverage. Check
 that both the reference DEM and the mapproj DEM were produced, then set *refDem*
