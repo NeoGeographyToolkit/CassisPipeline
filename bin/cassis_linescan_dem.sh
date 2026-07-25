@@ -152,17 +152,16 @@ cwin=$al/ctx_win.tif; dwin=$al/dem_win.tif
 gdalwarp -q -overwrite -te $WX0 $WY0 $WX1 $WY1 -r cubicspline "$coarse" "$cwin" >/dev/null 2>&1
 gdalwarp -q -overwrite -te $WX0 $WY0 $WX1 $WY1 -r cubicspline "$demc"   "$dwin" >/dev/null 2>&1
 echo "  WINDOWED CTX to linescan footprint: $WX0 $WY0 $WX1 $WY1"
-# 2. sparse hillshade-init: pc_align hillshades cwin/dwin internally, matches interest points between
-#    them, and RANSAC-fits a rigid transform (writes run-transform.txt). No dense correlation, no match file.
-pc_align --max-displacement -1 --num-iterations 0 --max-num-reference-points 1000000 \
-  --initial-transform-from-hillshading rigid --initial-transform-ransac-params 1000 3 \
-  --save-transformed-source-points "$cwin" "$dwin" -o "$al/run" > "$out/align_log.txt" 2>&1 \
-  || { echo "ALIGN FAILED (recorded)"; tail -25 "$out/align_log.txt"; }
-grep -aE "Translation vector|magnitude of translation|Number of.*matches" "$out/align_log.txt" | sed 's/^/  /'
-if [ -s "$al/run-transform.txt" ]; then
+# ============================ ALIGN TOOLBOX (fall-through, corr-eval gated) ============================
+# The align is a TOOLBOX: run a method, verify it with the corr-eval, and if it fails, fall through to the
+# next method. Two helpers keep it DRY (no duplicated apply/eval code). run-transform.txt is always the
+# cassis->ctx transform (pc_align ctx=ref cassis=source), the direction stage 2 (cassis_align_cams.sh) needs.
+
+# helper: apply $al/run-transform.txt to the stereo PC -> native + coarse-grid aligned DEMs (+ error image)
+apply_and_regrid() {
   pc_align --max-displacement -1 --num-iterations 0 --initial-transform "$al/run-transform.txt" \
     --save-transformed-source-points "$coarse" "$out/stereo/run-PC.tif" -o "$al/applied" \
-    > "$out/align_apply.txt" 2>&1 || { echo "APPLY FAILED"; tail -20 "$out/align_apply.txt"; }
+    > "$out/align_apply.txt" 2>&1 || { echo "  APPLY FAILED"; tail -20 "$out/align_apply.txt"; }
   point2dem --errorimage --t_srs "$srs" "$al/applied-trans_source.tif" -o "$al/aligned" \
     > "$out/align_p2d.txt" 2>&1
   gdalwarp -overwrite -t_srs "$srs" -te $XMIN $YMIN $XMAX $YMAX -ts $NX $NY -r cubicspline \
@@ -170,14 +169,11 @@ if [ -s "$al/run-transform.txt" ]; then
   [ -s "$al/aligned-IntersectionErr.tif" ] && gdalwarp -overwrite -t_srs "$srs" -te $XMIN $YMIN $XMAX $YMAX \
     -ts $NX $NY -r cubicspline "$al/aligned-IntersectionErr.tif" "$al/aligned_oncoarse_err.tif" \
     > "$out/align_warp_err.txt" 2>&1
-  echo "ALIGNED DEM (native): $al/aligned-DEM.tif ; on coarse grid: $al/aligned_oncoarse.tif"
-  ls -la "$al/aligned-DEM.tif" "$al/aligned_oncoarse.tif" 2>/dev/null
-  # ALIGNMENT GUARDRAIL (non-blocking): window the ALIGNED linescan to the SAME grid as the windowed CTX
-  # (cwin), hillshade both, then (a) write a red/green RGB overlay for the eye (R=CTX, G=aligned; yellow =
-  # registered - the real judge) and (b) correlate them for a robust-median residual dh/dv as a coarse
-  # automated catch, so a bad align can never be silent (it hides in dz, which is horizontal-blind).
-  # The two hillshades MUST be the same size or the correlator errors; hence the window-to-cwin-grid step.
-  # set +e so a guard sub-command (correlate/hillshade) can never abort an otherwise-good align.
+}
+# helper: window the aligned DEM to the cwin grid, hillshade, write the red/green overlay (the eyeball judge),
+# and correlate (asp_mgm, tight -25..25) for a robust-median residual dh/dv -> sets GDH GDV. set +e so a guard
+# sub-command can never abort a good align. The tight eval is stable even on smooth terrain (verified oxia1).
+eval_and_overlay() {
   set +e
   awin=$al/aligned_win.tif
   gdalwarp -q -overwrite -te $WX0 $WY0 $WX1 $WY1 -tr $TR $TR -r cubicspline \
@@ -196,7 +192,6 @@ out.SetGeoTransform(c.GetGeoTransform()); out.SetProjection(c.GetProjection())
 out.GetRasterBand(1).WriteArray(ca.astype('uint8')); out.GetRasterBand(2).WriteArray(ga.astype('uint8'))
 out.GetRasterBand(3).WriteArray(np.zeros((h,w),'uint8')); out.FlushCache()
 PYO
-  echo "  RED/GREEN OVERLAY (the align judge): $al/align_overlay.tif (R=CTX G=aligned, yellow=registered)"
   mkdir -p "$al/guard"
   parallel_stereo --correlator-mode --allow-different-gsd-in-correlator-mode \
     --stereo-algorithm asp_mgm --corr-kernel 9 9 --ip-per-tile 400 \
@@ -215,10 +210,81 @@ def md(f):
 print(f"{md(sys.argv[1]):.2f} {md(sys.argv[2]):.2f}")
 PYG
 )
-  echo "  ALIGN CHECK: post-align residual dh/dv median = ${GDH:-?} / ${GDV:-?} px (good is |median| < ~10)"
-  awk -v h="${GDH:-999}" -v v="${GDV:-999}" 'BEGIN{h=(h<0?-h:h); v=(v<0?-v:v); exit (h>10||v>10)?1:0}' \
-    || echo "  *** WARNING: linescan->CTX ALIGNMENT LIKELY FAILED (residual dh/dv median > 10 px). The CTX ref may be OVERSIZED for this site (it must be windowed to the linescan footprint) or the terrain too low-texture. Inspect $al/align_overlay.tif (R=CTX, G=aligned) by eye. ***"
+}
+# helper: is the current residual a PASS? |median| <= 10 px for BOTH dh and dv.
+align_ok() { awk -v h="${GDH:-999}" -v v="${GDV:-999}" 'BEGIN{h=(h<0?-h:h);v=(v<0?-v:v);exit (h>10||v>10)?1:0}'; }
+
+# ---- METHOD 1 (default): sparse hillshade-init, rigid (no scale). Works on textured sites. ----
+echo "=== S5 METHOD 1: sparse hillshade-init (pc_align --initial-transform-from-hillshading rigid) ==="
+pc_align --max-displacement -1 --num-iterations 0 --max-num-reference-points 1000000 \
+  --initial-transform-from-hillshading rigid --initial-transform-ransac-params 1000 3 \
+  --save-transformed-source-points "$cwin" "$dwin" -o "$al/run" > "$out/align_log.txt" 2>&1 \
+  || { echo "  method 1 pc_align FAILED (recorded)"; tail -20 "$out/align_log.txt"; }
+grep -aE "Translation vector|magnitude of translation|Number of.*matches" "$out/align_log.txt" | sed 's/^/  /'
+GDH=999; GDV=999; method="sparse-IP"
+[ -s "$al/run-transform.txt" ] && { apply_and_regrid; eval_and_overlay; }
+echo "  method 1 (sparse-IP) residual dh/dv median = ${GDH} / ${GDV} px"
+
+# ---- METHOD 2 (fall-through): asp_bm dense correlation + NED translation. Triggered only if method 1 fails. ----
+# For low-texture sites (oxia1) sparse IP finds too few inliers -> a spurious transform, and the true shift is
+# large (oxia1 ~164 px). asp_bm BLOCK MATCHING gives a CONSISTENT dense disparity where asp_mgm plains-locks;
+# we take its robust MEDIAN disparity as a pure TRANSLATION (horizontal), recover the vertical with one
+# translation-only ICP pass, and apply both as a num-iterations-0 --initial-ned-translation (no ICP drift).
+if ! align_ok; then
+  echo "=== S5 METHOD 1 failed the corr-eval -> METHOD 2: asp_bm dense correlation + NED translation ==="
+  m2=$al/m2; mkdir -p "$m2"
+  # a bigger window so a large low-texture shift is reachable (CTX fills what it has; nodata beyond is fine)
+  read BX0 BY0 BX1 BY1 < <(python3 -c "print($WX0-4000,$WY0-4000,$WX1+4000,$WY1+4000)")
+  cwin2=$m2/ctx_win.tif; dwin2=$m2/dem_win.tif
+  gdalwarp -q -overwrite -te $BX0 $BY0 $BX1 $BY1 -tr $TR $TR -r cubicspline "$coarse" "$cwin2" >/dev/null 2>&1
+  gdalwarp -q -overwrite -te $BX0 $BY0 $BX1 $BY1 -tr $TR $TR -r cubicspline "$demc"   "$dwin2" >/dev/null 2>&1
+  gdaldem hillshade -alt 12 -multidirectional -compute_edges "$cwin2" "$m2/ctx_hs.tif" >/dev/null 2>&1
+  gdaldem hillshade -alt 12 -multidirectional -compute_edges "$dwin2" "$m2/ls_hs.tif"  >/dev/null 2>&1
+  mkdir -p "$m2/corr"
+  parallel_stereo --correlator-mode --allow-different-gsd-in-correlator-mode --stereo-algorithm asp_bm \
+    --corr-kernel 21 21 --cost-mode 2 --subpixel-mode 1 --corr-search -200 -200 200 200 $PSCAP \
+    "$m2/ls_hs.tif" "$m2/ctx_hs.tif" "$m2/corr/run" > "$out/align_m2corr.txt" 2>&1
+  disparitydebug --raw "$m2/corr/run-F.tif" --output-prefix "$m2/dd" >/dev/null 2>&1
+  read MDH MDV < <(python3 - "$m2/dd-H.tif" "$m2/dd-V.tif" <<'PYM'
+import numpy as np, sys
+from osgeo import gdal
+def md(f):
+    d=gdal.Open(f)
+    if d is None: return 0.0
+    a=d.GetRasterBand(1).ReadAsArray().astype('float64'); nd=d.GetRasterBand(1).GetNoDataValue()
+    v=a[np.isfinite(a)&(a!=nd)&(np.abs(a)<1e5)]; return float(np.median(v)) if v.size else 0.0
+print(f"{md(sys.argv[1])} {md(sys.argv[2])}")
+PYM
+)
+  Nn=$(python3 -c "print(-1.0*($MDV)*$TR)"); Ee=$(python3 -c "print(($MDH)*$TR)")
+  echo "  asp_bm median disparity dh=$MDH dv=$MDV px -> horizontal NED  N=$Nn  E=$Ee (m)"
+  # translation-only ICP to recover the vertical (its horizontal drifts on plains, so we discard that)
+  pc_align --max-displacement -1 --num-iterations 40 --compute-translation-only \
+    --initial-ned-translation "$Nn $Ee 0" --max-num-reference-points 2000000 \
+    "$cwin2" "$dwin2" -o "$m2/icp" > "$out/align_m2icp.txt" 2>&1
+  Dd=$(python3 -c "
+import re
+try:
+    t=open('$out/align_m2icp.txt').read()
+    m=re.findall(r'North-East-Down, meters\): Vector3\(([^)]*)\)', t)
+    print(m[-1].split(',')[2].strip() if m else '0')
+except Exception: print('0')")
+  echo "  ICP vertical Down=$Dd m"
+  # final transform: pure translation (asp_bm horizontal + ICP vertical), num-iter 0 -> run-transform.txt
+  pc_align --max-displacement -1 --num-iterations 0 --initial-ned-translation "$Nn $Ee $Dd" \
+    --save-transformed-source-points "$cwin2" "$dwin2" -o "$al/run" > "$out/align_m2final.txt" 2>&1
+  method="asp_bm-dense"
+  [ -s "$al/run-transform.txt" ] && { apply_and_regrid; eval_and_overlay; }
+  echo "  method 2 (asp_bm-dense) residual dh/dv median = ${GDH} / ${GDV} px"
+fi
+
+# ---- report + final catch ----
+if [ -s "$al/aligned_oncoarse.tif" ]; then
+  echo "ALIGNED DEM (native): $al/aligned-DEM.tif ; on coarse grid: $al/aligned_oncoarse.tif"
+  echo "  ALIGN METHOD USED: $method ; final residual dh/dv median = ${GDH} / ${GDV} px"
+  echo "  RED/GREEN OVERLAY (the align judge): $al/align_overlay.tif (R=CTX G=aligned, yellow=registered)"
+  align_ok || echo "  *** WARNING: linescan->CTX ALIGNMENT residual dh/dv median > 10 px after all methods. Inspect $al/align_overlay.tif (R=CTX, G=aligned) by eye. ***"
 else
-  echo "NO transform - hillshade-init failed (fallback: dense-disparity align, pc_align RST)"
+  echo "NO aligned DEM produced - all align methods failed (see $out/align_*.txt)"
 fi
 echo "DONE $(date) [$site]"
