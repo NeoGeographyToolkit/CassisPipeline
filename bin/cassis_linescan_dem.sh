@@ -177,6 +177,8 @@ if [ -s "$al/run-transform.txt" ]; then
   # registered - the real judge) and (b) correlate them for a robust-median residual dh/dv as a coarse
   # automated catch, so a bad align can never be silent (it hides in dz, which is horizontal-blind).
   # The two hillshades MUST be the same size or the correlator errors; hence the window-to-cwin-grid step.
+  # set +e so a guard sub-command (correlate/hillshade) can never abort an otherwise-good align.
+  set +e
   awin=$al/aligned_win.tif
   gdalwarp -q -overwrite -te $WX0 $WY0 $WX1 $WY1 -tr $TR $TR -r cubicspline \
     "$al/aligned_oncoarse.tif" "$awin" > /dev/null 2>&1
