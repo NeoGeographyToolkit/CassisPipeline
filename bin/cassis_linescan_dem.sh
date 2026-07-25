@@ -120,60 +120,45 @@ point2dem --errorimage --t_srs "$srs" "$out/stereo/run-PC.tif" -o "$out/stereo/d
 dem=$out/stereo/dem-DEM.tif
 echo "DEM after BA+stereo (native res): $dem"; ls -la "$dem"
 
-# --- S5: ROBUST correlation-based alignment (pc_corr), NOT hillshade-init alone ---
-# Align the linescan stereo DEM to the coarse CTX by DENSE CORRELATION OF HILLSHADES, the method
-# in pc_align.rst (Correlation-based alignment, label pc_corr). Steps: put the native DEM on the
-# coarse CTX grid, hillshade both, dense-correlate the hillshades with parallel_stereo
-# --correlator-mode to get a dense MATCH FILE, then pc_align WITH that --match-file plus
-# --initial-transform-ransac-params so a RANSAC-robust rigid transform is fit from the matches.
-# WHY NOT --initial-transform-from-hillshading ALONE: it does its own sparse IP matching on the two
-# hillshades, which FAILS when the CTX (~18-20 m) and CaSSIS (~4.6 m) hillshades differ in scale
-# ("not enough valid matches"), and it then returns a DEGENERATE scale+5000+ km transform that
-# throws the cameras below the surface (mapproject cannot project -> stereo dies). Our own dev
-# recipe (cassis_asp/align_ls_to_ctx.sh) already established this; the correlator + match-file +
-# RANSAC path is the reliable one. Call 2 (below) then applies the resulting transform to the PC.
-echo "=== S5 pc_corr: dense hillshade correlation -> matches -> pc_align (rigid, RANSAC) ==="
-al=$out/align; mkdir -p "$al/corr"
+# --- S5: sparse hillshade-init alignment to the coarse CTX ---
+# Align the linescan stereo DEM to the coarse CTX with SPARSE interest points matched between the two
+# hillshades: pc_align --initial-transform-from-hillshading rigid (RANSAC-filtered), no dense
+# correlation and no match file. This is reliable ONLY because both DEMs are first put on the SAME
+# coarse CTX grid (demc, below) before matching. The old failure of hillshade-init alone ("not enough
+# valid matches" -> a degenerate scale + thousands-of-km transform that threw the cameras below the
+# surface) came entirely from a hillshade SCALE MISMATCH (CTX ~18-20 m vs CaSSIS native ~4.6 m).
+# Putting both on one grid removes that, and sparse IP then locks crater-on-crater. Dense correlation
+# of the hillshades was the earlier workaround, but it has its own failure: on low-texture terrain it
+# locks onto the featureless plains and leaves a 6-20 px residual, so sparse-IP is preferred. The CTX
+# is windowed to the linescan footprint + a 10% margin (0 is tightest on texture-rich scenes but
+# starves low-texture ones; 10% is the uniform value that serves both). Call 2 (below) applies the
+# resulting transform to the point cloud. Judge the result by a red/green hillshade overlay, not dh/dv.
+echo "=== S5 sparse hillshade-init align: pc_align --initial-transform-from-hillshading rigid ==="
+al=$out/align; mkdir -p "$al"
 # 1. put the native linescan DEM on the coarse CTX grid (same proj/extent/res) so hillshades match
 demc=$al/ls_oncoarsegrid.tif
 gdalwarp -q -overwrite -t_srs "$srs" -te $XMIN $YMIN $XMAX $YMAX -ts $NX $NY -r cubicspline \
   "$dem" "$demc" > "$out/align_warp_src.txt" 2>&1
-# WINDOW coarse+demc to the linescan footprint + 20% margin BEFORE correlating, so the
-# correlator cannot lock onto a FAR spurious match on low-texture plains (a km-scale spurious-shift bug).
+# WINDOW coarse+demc to the linescan footprint + 10% margin BEFORE matching, so the sparse IP
+# cannot lock onto a FAR spurious match on low-texture plains (a km-scale spurious-shift bug).
 read WX0 WY0 WX1 WY1 < <(python3 -c "
 from osgeo import gdal; import numpy as np
 d=gdal.Open('$demc'); b=d.GetRasterBand(1); nd=b.GetNoDataValue(); a=b.ReadAsArray()
 m=np.isfinite(a) if nd is None else (np.isfinite(a)&(a!=nd)); ys,xs=np.where(m); g=d.GetGeoTransform()
 x0=g[0]+xs.min()*g[1]; x1=g[0]+(xs.max()+1)*g[1]; y0=g[3]+(ys.max()+1)*g[5]; y1=g[3]+ys.min()*g[5]
-mx=abs(x1-x0)*0.2; my=abs(y1-y0)*0.2
+mx=abs(x1-x0)*0.1; my=abs(y1-y0)*0.1
 print(min(x0,x1)-mx, min(y0,y1)-my, max(x0,x1)+mx, max(y0,y1)+my)")
 cwin=$al/ctx_win.tif; dwin=$al/dem_win.tif
 gdalwarp -q -overwrite -te $WX0 $WY0 $WX1 $WY1 -r cubicspline "$coarse" "$cwin" >/dev/null 2>&1
 gdalwarp -q -overwrite -te $WX0 $WY0 $WX1 $WY1 -r cubicspline "$demc"   "$dwin" >/dev/null 2>&1
 echo "  WINDOWED CTX to linescan footprint: $WX0 $WY0 $WX1 $WY1"
-# 2. hillshade both coarse DEMs (CTX = reference, ours = source)
-ctxh=$al/ctx_hill.tif; srch=$al/ls_hill.tif
-gdaldem hillshade -multidirectional -compute_edges "$cwin" "$ctxh" > /dev/null 2>&1
-gdaldem hillshade -multidirectional -compute_edges "$dwin"   "$srch" > /dev/null 2>&1
-# 3. dense-correlate the hillshades -> dense match file (inspect $al/corr/run-F.tif if it fails)
-parallel_stereo --correlator-mode --stereo-algorithm asp_mgm --corr-kernel 9 9 \
-  --ip-per-tile 400 --subpixel-mode 9 --corr-search -120 -120 120 120 \
-  --num-matches-from-disparity 40000 $PSCAP \
-  "$ctxh" "$srch" "$al/corr/run" > "$out/align_corr.txt" 2>&1 \
-  || { echo "CORR FAILED"; grep -aiE "ERROR|RANSAC|less than" "$out/align_corr.txt" | tail -3; }
-mf=$(ls "$al"/corr/run-disp*.match 2>/dev/null | head -1)
-# 4. pc_align: rigid transform FROM the dense hillshade matches, RANSAC-filtered (writes run-transform.txt)
-if [ -n "$mf" ] && [ -s "$mf" ]; then
-  echo "  hillshade matches: $mf"
-  pc_align --max-displacement -1 --num-iterations 0 --max-num-reference-points 1000000 \
-    --match-file "$mf" --initial-transform-from-hillshading rigid \
-    --initial-transform-ransac-params 1000 3 --save-transformed-source-points \
-    "$cwin" "$dwin" -o "$al/run" > "$out/align_log.txt" 2>&1 \
-    || { echo "ALIGN FAILED (recorded)"; tail -25 "$out/align_log.txt"; }
-  grep -aE "Translation vector|magnitude of translation" "$out/align_log.txt" | sed 's/^/  /'
-else
-  echo "NO match file - hillshade correlation produced no matches (see $out/align_corr.txt)"
-fi
+# 2. sparse hillshade-init: pc_align hillshades cwin/dwin internally, matches interest points between
+#    them, and RANSAC-fits a rigid transform (writes run-transform.txt). No dense correlation, no match file.
+pc_align --max-displacement -1 --num-iterations 0 --max-num-reference-points 1000000 \
+  --initial-transform-from-hillshading rigid --initial-transform-ransac-params 1000 3 \
+  --save-transformed-source-points "$cwin" "$dwin" -o "$al/run" > "$out/align_log.txt" 2>&1 \
+  || { echo "ALIGN FAILED (recorded)"; tail -25 "$out/align_log.txt"; }
+grep -aE "Translation vector|magnitude of translation|Number of.*matches" "$out/align_log.txt" | sed 's/^/  /'
 if [ -s "$al/run-transform.txt" ]; then
   pc_align --max-displacement -1 --num-iterations 0 --initial-transform "$al/run-transform.txt" \
     --save-transformed-source-points "$coarse" "$out/stereo/run-PC.tif" -o "$al/applied" \
@@ -187,31 +172,50 @@ if [ -s "$al/run-transform.txt" ]; then
     > "$out/align_warp_err.txt" 2>&1
   echo "ALIGNED DEM (native): $al/aligned-DEM.tif ; on coarse grid: $al/aligned_oncoarse.tif"
   ls -la "$al/aligned-DEM.tif" "$al/aligned_oncoarse.tif" 2>/dev/null
-  # ALIGNMENT GUARDRAIL (non-blocking): correlate the ALIGNED linescan vs the WINDOWED CTX; a
-  # large residual dh/dv mean means the align locked onto a wrong/far match (oversized CTX or too
-  # low texture). Warn loudly so this can never again be silent (it hides in dz, which is horizontal-blind).
-  gdaldem hillshade -multidirectional -compute_edges "$cwin" "$al/guard_ctx_hs.tif" > /dev/null 2>&1
-  gdaldem hillshade -multidirectional -compute_edges "$al/aligned_oncoarse.tif" "$al/guard_ls_hs.tif" > /dev/null 2>&1
+  # ALIGNMENT GUARDRAIL (non-blocking): window the ALIGNED linescan to the SAME grid as the windowed CTX
+  # (cwin), hillshade both, then (a) write a red/green RGB overlay for the eye (R=CTX, G=aligned; yellow =
+  # registered - the real judge) and (b) correlate them for a robust-median residual dh/dv as a coarse
+  # automated catch, so a bad align can never be silent (it hides in dz, which is horizontal-blind).
+  # The two hillshades MUST be the same size or the correlator errors; hence the window-to-cwin-grid step.
+  awin=$al/aligned_win.tif
+  gdalwarp -q -overwrite -te $WX0 $WY0 $WX1 $WY1 -tr $TR $TR -r cubicspline \
+    "$al/aligned_oncoarse.tif" "$awin" > /dev/null 2>&1
+  gdaldem hillshade -alt 12 -multidirectional -compute_edges "$cwin"  "$al/guard_ctx_hs.tif" > /dev/null 2>&1
+  gdaldem hillshade -alt 12 -multidirectional -compute_edges "$awin"  "$al/guard_ls_hs.tif"  > /dev/null 2>&1
+  python3 - "$al/guard_ctx_hs.tif" "$al/guard_ls_hs.tif" "$al/align_overlay.tif" <<'PYO'
+import sys, numpy as np
+from osgeo import gdal
+gdal.DontUseExceptions()
+c=gdal.Open(sys.argv[1]); g=gdal.Open(sys.argv[2])
+ca=c.GetRasterBand(1).ReadAsArray(); ga=g.GetRasterBand(1).ReadAsArray()
+h=min(ca.shape[0],ga.shape[0]); w=min(ca.shape[1],ga.shape[1]); ca=ca[:h,:w]; ga=ga[:h,:w]
+out=gdal.GetDriverByName('GTiff').Create(sys.argv[3],w,h,3,gdal.GDT_Byte)
+out.SetGeoTransform(c.GetGeoTransform()); out.SetProjection(c.GetProjection())
+out.GetRasterBand(1).WriteArray(ca.astype('uint8')); out.GetRasterBand(2).WriteArray(ga.astype('uint8'))
+out.GetRasterBand(3).WriteArray(np.zeros((h,w),'uint8')); out.FlushCache()
+PYO
+  echo "  RED/GREEN OVERLAY (the align judge): $al/align_overlay.tif (R=CTX G=aligned, yellow=registered)"
   mkdir -p "$al/guard"
-  parallel_stereo --correlator-mode --stereo-algorithm asp_mgm --corr-kernel 9 9 --ip-per-tile 400 \
+  parallel_stereo --correlator-mode --allow-different-gsd-in-correlator-mode \
+    --stereo-algorithm asp_mgm --corr-kernel 9 9 --ip-per-tile 400 \
     --subpixel-mode 9 --corr-search -40 -40 40 40 $PSCAP \
     "$al/guard_ctx_hs.tif" "$al/guard_ls_hs.tif" "$al/guard/run" > "$out/align_guard.txt" 2>&1
   disparitydebug --raw "$al/guard/run-F.tif" --output-prefix "$al/guard/dd" > /dev/null 2>&1
   read GDH GDV < <(python3 - "$al/guard/dd-H.tif" "$al/guard/dd-V.tif" <<'PYG'
 import numpy as np, sys
 from osgeo import gdal
-def mn(f):
+def md(f):
     d=gdal.Open(f)
     if d is None: return 999.0
     a=d.GetRasterBand(1).ReadAsArray().astype('float64'); nd=d.GetRasterBand(1).GetNoDataValue()
     m=np.isfinite(a)&(a!=nd)&(np.abs(a)<1e5)
-    return float(np.mean(a[m])) if m.any() else 999.0
-print(f"{mn(sys.argv[1]):.2f} {mn(sys.argv[2]):.2f}")
+    return float(np.median(a[m])) if m.any() else 999.0
+print(f"{md(sys.argv[1]):.2f} {md(sys.argv[2]):.2f}")
 PYG
 )
-  echo "  ALIGN CHECK: post-align residual dh/dv mean = ${GDH:-?} / ${GDV:-?} px (good is |mean| < ~10)"
+  echo "  ALIGN CHECK: post-align residual dh/dv median = ${GDH:-?} / ${GDV:-?} px (good is |median| < ~10)"
   awk -v h="${GDH:-999}" -v v="${GDV:-999}" 'BEGIN{h=(h<0?-h:h); v=(v<0?-v:v); exit (h>10||v>10)?1:0}' \
-    || echo "  *** WARNING: linescan->CTX ALIGNMENT LIKELY FAILED (residual dh/dv mean > 10 px). The CTX ref may be OVERSIZED for this site (it must be windowed to the linescan footprint) or the terrain too low-texture. Inspect $al/aligned_oncoarse.tif vs the CTX by red/green hillshade overlay. ***"
+    || echo "  *** WARNING: linescan->CTX ALIGNMENT LIKELY FAILED (residual dh/dv median > 10 px). The CTX ref may be OVERSIZED for this site (it must be windowed to the linescan footprint) or the terrain too low-texture. Inspect $al/align_overlay.tif (R=CTX, G=aligned) by eye. ***"
 else
   echo "NO transform - hillshade-init failed (fallback: dense-disparity align, pc_align RST)"
 fi
