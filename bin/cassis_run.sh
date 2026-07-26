@@ -9,6 +9,10 @@
 #   pass1 -> outDir/frame/pass1 (+ pass1_stereo); pass2 -> outDir/frame/pass2, building on pass1.
 #   All runs are geounc=0.
 set +e; umask 022
+# Self-locate this stage script's bin dir and prepend it to PATH so its sibling pipeline scripts
+# (called by bare name) resolve whether this runs via cassis_process.sh or directly. bash searches
+# PATH for a script filename with no slash, so this makes bare-name sibling calls work standalone.
+selfBin=$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd); [ -n "$selfBin" ] && export PATH="$selfBin:$PATH"
 cfg=${1:?site config (cassis_siteName.conf)}; stage=${2:?stage pass1|pass2}
 outDir=${3:?outDir (output dir, relative to workdir or absolute; changes per run)}; B=${4:?work base LAST}
 # The ASP and ISIS tools must be on PATH and the environment set up beforehand.

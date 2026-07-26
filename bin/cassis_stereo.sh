@@ -28,6 +28,13 @@
 #   <matchPrefix> <Llook> <Rlook> <num_matches_from_disp> <B>
 set +e
 umask 022
+# This stage script runs either via the master driver cassis_process.sh or directly. Resolve its own
+# bin directory (before any cd) and prepend it to PATH, so its sibling pipeline scripts and the ASP tools
+# the caller put on PATH resolve regardless of the caller's cwd. The per-pair worker below is launched
+# through GNU parallel, which does not reliably carry this PATH into each job, so it is called by full
+# path rather than a bare name.
+selfBin=$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)
+[ -n "$selfBin" ] && export PATH="$selfBin:$PATH"
 outDir=${1:?outDir required}
 tag=${2:?tag required (names the output dir <outDir>/frame/<tag>_stereo)}
 imgList=${3:?imgList required (INPUT arg: BA run-image_list.txt, 1-1 with camList)}
@@ -180,10 +187,10 @@ PY
   echo "  dense stereo via GNU parallel: -j $Kd (T=$Td) using $(command -v parallel)"
   echo "  [LR phase]"
   parallel -j "$Kd" --colsep ' ' --joblog "$out/joblog_lr.txt" \
-    bash cassis_stereo_pair.sh lr {1} {2} "$out/pair.env" < "$out/pairs_lr.txt"
+    bash "$selfBin/cassis_stereo_pair.sh" lr {1} {2} "$out/pair.env" < "$out/pairs_lr.txt"
   echo "  [same-look phase]"
   parallel -j "$Kd" --colsep ' ' --joblog "$out/joblog_same.txt" \
-    bash cassis_stereo_pair.sh same {1} {2} "$out/pair.env" < "$out/pairs_same.txt"
+    bash "$selfBin/cassis_stereo_pair.sh" same {1} {2} "$out/pair.env" < "$out/pairs_same.txt"
   echo "  dense matches emitted: $(ls ${matchPrefix}-*.match 2>/dev/null | wc -l)"
   echo "CASSIS_STEREO_DONE (dense) $outDir $tag $(date)"
   exit 0
@@ -221,7 +228,7 @@ fi
 echo "=== [3] stereo via GNU parallel: -j $K (T=$T, cores=$cores) using $(command -v parallel) ==="
 write_pair_env "$T"
 parallel -j "$K" --colsep ' ' --joblog "$out/joblog_dem.txt" \
-  bash cassis_stereo_pair.sh dem {1} {2} "$out/pair.env" < "$pf"
+  bash "$selfBin/cassis_stereo_pair.sh" dem {1} {2} "$out/pair.env" < "$pf"
 
 # --- 4. blunder filter + dem_mosaic -> frame DEM ---
 # Drop a per-pair DEM only if its MEAN elevation departs from the CTX reference

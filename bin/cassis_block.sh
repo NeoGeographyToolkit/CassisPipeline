@@ -9,6 +9,10 @@
 #   <mapprojRes> <demRes> <corrRes> <corrSearch> <htUncLoose> <htUncTight> <camPosUnc> <robust> <gcpSigma>
 #   <maxGcp> <maxDisp> <geounc> <outTag> <B>
 set +e; umask 022
+# Self-locate this stage script's bin dir and prepend it to PATH so its sibling pipeline scripts
+# (called by bare name) resolve whether this runs via cassis_process.sh or directly. bash searches
+# PATH for a script filename with no slash, so this makes bare-name sibling calls work standalone.
+selfBin=$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd); [ -n "$selfBin" ] && export PATH="$selfBin:$PATH"
 outDir=${1:?outDir}; inImgList=${2:?inImgList (prev block run-image_list.txt)}; inCamList=${3:?inCamList}
 inGcp=${4:?inGcp (prev block gcp)}; refDem=${5:?refDem}; mapprojDem=${6:?mapprojDem}; matchpfx=${7:?matchpfx}
 Llook=${8:?Llook}; Rlook=${9:?Rlook}; mapprojRes=${10:?mapprojRes (NATIVE 4.59)}; demRes=${11:?demRes (18)}

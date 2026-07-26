@@ -34,7 +34,12 @@ README.md
 LICENSE
 ```
 
-Add the bin directory to the PATH.
+Add the bin directory to the PATH. The master driver `cassis_process.sh` and the
+individual stage scripts also self-locate their own bin directory and prepend it
+to the PATH, so the pipeline's sibling scripts resolve whether you run the whole
+pipeline through the master driver or run one stage script directly for
+debugging. The ASP and ISIS tools, however, must still be put on the PATH
+explicitly (see the Environment section below).
 
 ## Reference data
 
@@ -193,6 +198,13 @@ export PATH=/path/to/CassisPipeline/bin:/path/to/StereoPipeline/bin:$PATH
 Each script also checks up front that the environment is active (CONDA_PREFIX
 set) and that the tools it needs are on PATH. Camera generation uses the
 environment's own *isd_generate*, via CONDA_PREFIX.
+
+The normal entry point is the master driver `cassis_process.sh`, which runs the
+stages in order. Each stage script (for example `cassis_stereo.sh`) can also be
+run on its own for debugging: it prepends its own bin directory to the PATH, so
+its sibling scripts and the per-pair worker `cassis_stereo_pair.sh` (launched
+through GNU parallel) resolve without the caller having added the pipeline bin to
+the PATH. Only the external ASP and ISIS tools still need to be on the PATH.
 
 ### Configuration
 
