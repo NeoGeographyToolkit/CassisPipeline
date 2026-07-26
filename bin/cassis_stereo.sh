@@ -92,7 +92,13 @@ cam_of(){
 THR=$( { [ -r "$PBS_NODEFILE" ] && wc -l < "$PBS_NODEFILE"; } 2>/dev/null || nproc --all 2>/dev/null || echo 8 )
 case "$THR" in ''|*[!0-9]*) THR=8 ;; esac
 [ "$THR" -gt 128 ] && THR=128
-MK=$(( THR > 8 ? 8 : THR )); [ "$MK" -lt 1 ] && MK=1; MT=$(( THR / MK )); [ "$MT" -lt 1 ] && MT=1; [ "$MT" -gt 8 ] && MT=8
+MK=$(( THR > 8 ? 8 : THR )); [ "$MK" -lt 1 ] && MK=1
+# Optional gentle cap for a weak workstation (see the CASSIS_MAX_JOBS note in DEM mode below); unset =
+# cluster default. Caps the mapproject pool here AND the per-pair stereo fan-out later, and holds the
+# mapproject thread count down so a small machine is not oversubscribed or driven out of memory.
+[ -n "$CASSIS_MAX_JOBS" ] && case "$CASSIS_MAX_JOBS" in ''|*[!0-9]*) : ;; *) [ "$CASSIS_MAX_JOBS" -lt "$MK" ] && MK=$CASSIS_MAX_JOBS ;; esac
+MT=$(( THR / MK )); [ "$MT" -lt 1 ] && MT=1; [ "$MT" -gt 8 ] && MT=8
+[ -n "$CASSIS_MAX_JOBS" ] && [ "$MT" -gt 2 ] && MT=2
 map_one(){
   local c=$1 nm cam
   nm=$(basename "${c%.cub}"); cam=$(cam_of "$nm")
@@ -212,7 +218,12 @@ nx=$(wc -l < "$pf")
 echo "=== [2] $nx cross-look L-R pairs (match-file-verified) ==="
 [ "$nx" -ge 1 ] || { echo "ERROR no LR pairs derived"; exit 1; }
 
-# --- 3. per-pair stereo (mapprojected, alignment none) + point2dem --errorimage ---
+# --- 3. per-pair stereo + point2dem + mosaic via ms_cassis.py (the multi_stereo engine) ---
+# Build the 4-column overlap list (left_map right_map left_cam right_cam) from the match-verified LR
+# pairs and the mapprojected framelets, then let ms_cassis.py run per-pair parallel_stereo (mapproj
+# input + trailing seed DEM), point2dem --errorimage, the CTX-relative blunder filter, and the DEM +
+# max-tri-error mosaics. The per-pair recipe below is identical to cassis_stereo_pair.sh dem mode, so
+# the frame DEM matches by construction. ms_cassis.py will become a general ASP multi_stereo tool.
 T=2
 if [ -n "$PBS_JOBID" ]; then
   cores=$( { [ -r "$PBS_NODEFILE" ] && wc -l < "$PBS_NODEFILE"; } 2>/dev/null || nproc 2>/dev/null )
@@ -222,63 +233,40 @@ else
   cores=$(nproc 2>/dev/null || echo 4); K=$(( cores / T ))
 fi
 [ "$K" -lt 1 ] && K=1; [ "$K" -gt 128 ] && K=128
-# per-pair worker (cassis_stereo_pair.sh mode=dem: parallel_stereo + point2dem, args as recipe) run
-# via GNU parallel. --min-matches 5 + --ip-per-tile 2000 + --ip-match-radius 20 + max-valid-tri-err 8
-# live in the worker. --joblog records per-pair time + exit for the metrics.
-echo "=== [3] stereo via GNU parallel: -j $K (T=$T, cores=$cores) using $(command -v parallel) ==="
-write_pair_env "$T"
-parallel -j "$K" --colsep ' ' --joblog "$out/joblog_dem.txt" \
-  bash "$selfBin/cassis_stereo_pair.sh" dem {1} {2} "$out/pair.env" < "$pf"
-
-# --- 4. blunder filter + dem_mosaic -> frame DEM ---
-# Drop a per-pair DEM only if its MEAN elevation departs from the CTX reference
-# (refDem) over the SAME footprint by more than blunderTolM. This is relief-aware:
-# comparing each pair to a GLOBAL median (the old rule) wrongly discards
-# legitimately high (or low) slivers on high-relief scenes - e.g. the Olympus
-# flank has ~1800 m of relief, so the many low-plain slivers dominate the median
-# and every high-flank sliver is thrown out as a blunder, truncating the DEM. A
-# real stereo blunder triangulates to space and is off from CTX by thousands of m;
-# a good sliver matches CTX to tens of m at ANY elevation, so a local comparison
-# to CTX keeps all real terrain and still drops true blunders. Where CTX has no
-# data over a sliver, keep it (cannot judge). blunderTolM overridable, default 500.
+# Optional gentle cap for a workstation run: CASSIS_MAX_JOBS limits the per-pair stereo fan-out (and the
+# mapproject pool above) so the machine is not oversubscribed. Unset = cluster default (cores/T).
+[ -n "$CASSIS_MAX_JOBS" ] && case "$CASSIS_MAX_JOBS" in ''|*[!0-9]*) : ;; *) [ "$CASSIS_MAX_JOBS" -lt "$K" ] && K=$CASSIS_MAX_JOBS ;; esac
 blunderTolM=${blunderTolM:-500}
-dems=$(python3 -c "
-import subprocess,re,os,sys
-refDem='$refDem'; tol=float('$blunderTolM')
-def ginfo(p): return subprocess.run(['gdalinfo','-stats',p],capture_output=True,text=True).stdout
-def getmean(t):
-    m=re.search(r'STATISTICS_MEAN=(-?[0-9.]+)',t); return float(m.group(1)) if m else None
-def bbox(t):
-    ul=re.search(r'Upper Left\s+\(\s*(-?[0-9.]+),\s*(-?[0-9.]+)\)',t)
-    lr=re.search(r'Lower Right\s+\(\s*(-?[0-9.]+),\s*(-?[0-9.]+)\)',t)
-    return (ul.group(1),ul.group(2),lr.group(1),lr.group(2)) if ul and lr else None
-keep=[]; drop=[]
-for line in open('$pf'):
-    p=line.split()
-    if len(p)!=2: continue
-    d='$out/stereo/%s__%s/dem-DEM.tif'%(p[0],p[1])
-    if not os.path.exists(d): continue
-    t=ginfo(d); ms=getmean(t); bb=bbox(t)
-    if ms is None: continue
-    mc=None
-    if bb is not None:
-        tmp='/tmp/ctxcrop_%d_%d.tif'%(os.getpid(),len(keep)+len(drop))
-        subprocess.run(['gdal_translate','-q','-projwin',bb[0],bb[1],bb[2],bb[3],refDem,tmp],capture_output=True,text=True)
-        if os.path.exists(tmp):
-            mc=getmean(ginfo(tmp)); os.remove(tmp)
-    if mc is None or abs(ms-mc)<=tol:
-        keep.append(d)
-    else:
-        drop.append(d.split('/')[-2])
-sys.stderr.write('  blunder filter (CTX-relative, tol=%g m): kept %d, dropped %d\n'%(tol,len(keep),len(drop)))
-print(' '.join(keep))
-")
-nd=$(echo "$dems" | wc -w | tr -d ' ')
-echo "=== [4] dem_mosaic $nd per-pair DEMs (blunders filtered) -> frame DEM ==="
-[ "$nd" -gt 0 ] || { echo "ERROR no per-pair DEMs to mosaic"; exit 1; }
+ovl=$out/overlap4.txt; : > "$ovl"
+while read -r L R; do
+  [ -n "$L" ] && [ -n "$R" ] || continue
+  Lc=$(cam_of "$L"); Rc=$(cam_of "$R")
+  [ -s "$out/maps/$L.tif" ] && [ -s "$out/maps/$R.tif" ] && [ -s "$Lc" ] && [ -s "$Rc" ] || continue
+  echo "$out/maps/$L.tif $out/maps/$R.tif $Lc $Rc" >> "$ovl"
+done < "$pf"
+no=$(wc -l < "$ovl")
+echo "=== [3] ms_cassis.py stereo+dem+mosaic over $no pairs (-j $K, T=$T, cores=$cores) ==="
+[ "$no" -ge 1 ] || { echo "ERROR no overlap-list rows built"; exit 1; }
+python3 "$selfBin/ms_cassis.py" \
+  --overlap-list "$ovl" \
+  --dem "$mapprojDem" \
+  --ref-dem "$refDem" \
+  --out-dir "$out" \
+  --mode dem_mosaic \
+  --num-parallel "$K" \
+  --blunder-tol "$blunderTolM" \
+  --stereo-options "--processes 1 --threads-multiprocess $T --threads-singleprocess $T --alignment-method none --stereo-algorithm asp_mgm --subpixel-mode 9 --corr-seed-mode 1 --min-matches 5 --ip-per-tile 2000 --mapproj-geolocation-uncertainty 0 --ip-match-radius 20" \
+  --point2dem-options "--tr $demRes --max-valid-triangulation-error 8" \
+  || { echo "ms_cassis FAILED"; exit 1; }
+
+# --- 4. frame DEM on the CTX grid (from the ms_cassis DEM mosaic) + hillshade + dz geodiff ---
+# ms_cassis.py already applied the CTX-relative blunder filter (it drops a per-pair DEM whose mean
+# departs from refDem over its footprint by more than blunderTolM - relief-aware, keeps real high/low
+# terrain, drops only true blunders) and produced dem_mosaic-DEM.tif and the max tri-error mosaic
+# (section 5). Here we put the frame DEM on the sharp CTX grid, hillshade it, and geodiff it to CTX.
 mos=$out/cassis_dem
-dem_mosaic $dems --t_srs "$PROJ" --tr $demRes -o ${mos}.tif > $out/mosaic.log 2>&1 \
-  || { echo "MOSAIC FAILED"; tail -5 $out/mosaic.log; exit 1; }
+[ -s "$out/dem_mosaic-DEM.tif" ] || { echo "ERROR ms_cassis produced no DEM mosaic ($out/dem_mosaic-DEM.tif)"; exit 1; }
+cp -f "$out/dem_mosaic-DEM.tif" ${mos}.tif
 # ALWAYS -r cubicspline, never the gdalwarp default nearest-neighbor (nearest snaps/misregisters
 # a continuous DEM by up to half a pixel). CLAUDE.md rule.
 gdalwarp -q -overwrite -t_srs "$PROJ" -te $TE -tr $demRes $demRes -r cubicspline ${mos}.tif ${mos}_on_ctx.tif \
@@ -286,13 +274,16 @@ gdalwarp -q -overwrite -t_srs "$PROJ" -te $TE -tr $demRes $demRes -r cubicspline
 gdaldem hillshade -az 300 -alt 25 -compute_edges ${mos}_on_ctx.tif ${mos}_on_ctx_hs.tif >/dev/null 2>&1 || true
 geodiff ${mos}_on_ctx.tif "$refDem" -o ${mos}_ctxdiff >/dev/null 2>&1 || true
 
-# --- 5. max tri-error mosaic (ray self-consistency; same blunder-filtered pairs) ---
+# --- 5. max tri-error mosaic (ray self-consistency) on the CTX grid, from the ms_cassis output ---
 errmos=$out/max_tri_err
-errs=$(echo "$dems" | sed 's/dem-DEM\.tif/dem-IntersectionErr.tif/g')
-dem_mosaic --threads $THR --max $errs --t_srs "$PROJ" --tr $demRes -o ${errmos}.tif >> $out/mosaic.log 2>&1 \
-  && gdalwarp -q -overwrite -t_srs "$PROJ" -te $TE -tr $demRes $demRes -r cubicspline ${errmos}.tif ${errmos}_on_ctx.tif >/dev/null 2>&1 \
-  && echo "  max tri-error mosaic: ${errmos}_on_ctx.tif" \
-  || echo "  WARN max_tri_err mosaic skipped"
+if [ -s "$out/dem_mosaic-IntersectionErr.tif" ]; then
+  cp -f "$out/dem_mosaic-IntersectionErr.tif" ${errmos}.tif
+  gdalwarp -q -overwrite -t_srs "$PROJ" -te $TE -tr $demRes $demRes -r cubicspline ${errmos}.tif ${errmos}_on_ctx.tif >/dev/null 2>&1 \
+    && echo "  max tri-error mosaic: ${errmos}_on_ctx.tif" \
+    || echo "  WARN max_tri_err regrid skipped"
+else
+  echo "  WARN ms_cassis produced no tri-err mosaic ($out/dem_mosaic-IntersectionErr.tif)"
+fi
 
 # --- 6. per-look ortho image mosaic (standard product; native res, plain dem_mosaic, no --max) ---
 for lk in "$Llook" "$Rlook"; do
