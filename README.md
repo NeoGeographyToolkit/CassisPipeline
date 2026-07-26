@@ -36,9 +36,9 @@ LICENSE
 
 Add the bin directory to the PATH. The master driver `cassis_process.sh` and the
 individual stage scripts also self-locate their own bin directory and prepend it
-to the PATH, so the pipeline's sibling scripts resolve whether you run the whole
-pipeline through the master driver or run one stage script directly for
-debugging. The ASP and ISIS tools, however, must still be put on the PATH
+to the PATH, so the pipeline's sibling scripts resolve whether the whole
+pipeline is run through the master driver or a single stage script is run
+directly for debugging. The ASP and ISIS tools, however, must still be put on the PATH
 explicitly (see the Environment section below).
 
 ## Reference data
@@ -215,7 +215,7 @@ are in the config directory. Both are sourced as shell variables.
 The config directory ships a ready per-site config for every site in the ASP
 documentation: *cassis_jezero.conf*, *cassis_ox1.conf*, *cassis_ox2.conf*,
 *cassis_gusev.conf*, and *cassis_004756.conf*, plus the shared
-*cassis_common.conf*. Copy the pair you need into the work directory.
+*cassis_common.conf*. Copy the required pair into the work directory.
 
 - *cassis_common.conf* holds the shared recipe constants (grid resolutions,
   bundle-adjustment uncertainties, the optimized and fixed lens coefficients,
