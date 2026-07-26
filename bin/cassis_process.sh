@@ -146,6 +146,8 @@ if want 5; then
   NCORE=$( { [ -r "$PBS_NODEFILE" ] && wc -l < "$PBS_NODEFILE"; } 2>/dev/null || nproc --all 2>/dev/null || echo 28 )
   case "$NCORE" in ''|*[!0-9]*) NCORE=28 ;; esac
   K=$(( NCORE > 2 ? NCORE : 2 ))
+  # Gentle cap for a weak workstation (same CASSIS_MAX_JOBS knob as cassis_stereo.sh); unset = all cores.
+  [ -n "$CASSIS_MAX_JOBS" ] && case "$CASSIS_MAX_JOBS" in ''|*[!0-9]*) : ;; *) [ "$CASSIS_MAX_JOBS" -lt "$K" ] && K=$CASSIS_MAX_JOBS ;; esac
   echo "  applying optimized distortion to $nref cams (K=$K concurrent) refDem=$refDem posUnc=$refitPosUnc pix=$refitPixSamples"
   set +e; i=0; done5=0
   for cam in "$refitCamDir"/*.json; do

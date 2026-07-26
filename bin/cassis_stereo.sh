@@ -187,6 +187,8 @@ PY
   [ -n "$PBS_JOBID" ] && [ -r "$PBS_NODEFILE" ] && cores=$(wc -l < "$PBS_NODEFILE")
   case "$cores" in ''|*[!0-9]*) cores=28 ;; esac
   Kd=$(( cores / Td )); [ "$Kd" -lt 1 ] && Kd=1; [ "$Kd" -gt 128 ] && Kd=128
+  # Gentle cap for a weak workstation (see CASSIS_MAX_JOBS in DEM mode); unset = cluster default.
+  [ -n "$CASSIS_MAX_JOBS" ] && case "$CASSIS_MAX_JOBS" in ''|*[!0-9]*) : ;; *) [ "$CASSIS_MAX_JOBS" -lt "$Kd" ] && Kd=$CASSIS_MAX_JOBS ;; esac
   # per-pair worker + GNU parallel (single node -> local; the worker is self-contained so parallel
   # carries nothing). The env file holds the fixed params; --joblog records per-pair time + exit.
   write_pair_env "$Td"
