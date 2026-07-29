@@ -365,6 +365,64 @@ CTX reference with geodiff for the vertical difference and by hillshade image
 correlation for the horizontal registration, as in
 [Evaluation](https://stereopipeline.readthedocs.io/en/latest/examples/cassis.html#cassis-eval).
 
+## Joint CTX and CaSSIS jitter solving
+
+An advanced, optional refinement. Rather than registering the CaSSIS images
+against the CTX reference DEM, they are matched at the pixel level against the CTX
+images themselves and the two sensors are then refined together. This removes the
+along-track jitter usually present in a single CTX stereo pair. It works when the
+CTX and CaSSIS images have similar (afternoon) illumination. The rationale,
+parameters, and result figures are documented at
+[Joint CTX and CaSSIS jitter solving](https://stereopipeline.readthedocs.io/en/latest/examples/cassis.html#cassis-jitter).
+
+The scripts below are run in order. The last argument to each is the work
+directory; all other paths are relative to it. ASP and ISIS must be on PATH first,
+and each script finds its sibling scripts by its own location.
+
+1. Ingest the CTX pair to cubs and CSM linescan cameras following the CTX recipe
+   (including the *ctxcal* radiometric calibration), then bundle-adjust the pair
+   and run stereo with local epipolar alignment to get a rough CTX DEM. This uses
+   the standard ASP tools.
+
+2. Align the rough CTX DEM and its cameras to the reference CTX DEM
+   (*cassis_ctx_align.sh*): coarsen both DEMs, one `pc_align` (hillshade transform
+   then ICP), and apply the transform to the cameras.
+
+   ```bash
+   cassis_ctx_align.sh ctx-DEM.tif ctx_ref.tif left.cub right.cub \
+     left.json right.json align $(pwd)
+   ```
+
+3. Mapproject the CTX images and the CaSSIS framelets and run the joint bundle to
+   produce the clean cross-sensor matches (*cassis_ctx_bundle.sh*; the camera
+   solution is discarded). The image list is the CaSSIS framelets then the two CTX
+   cubs, and the camera list is the matching cameras in the same order (the aligned
+   CTX cameras and the CaSSIS cameras). The last-but-one argument is the
+   `--ip-detect-method` (0 gives many more cross-sensor matches here than 1).
+
+   ```bash
+   cassis_ctx_bundle.sh images.txt cameras.txt ctx_ref_blur.tif ctx_ref.tif 0 \
+     ba_joint/run $(pwd)
+   ```
+
+4. Run the joint jitter solve, tied by those matches (*cassis_ctx_jitter.sh*).
+
+   ```bash
+   cassis_ctx_jitter.sh images.txt cameras.txt ba_joint/run ctx_ref.tif \
+     jitter/run $(pwd)
+   ```
+
+5. Remake the CTX DEM with the jitter-refined cameras (*cassis_ctx_stereo.sh*).
+
+   ```bash
+   cassis_ctx_stereo.sh left.cub right.cub jitter/run-left.adjusted_state.json \
+     jitter/run-right.adjusted_state.json ctx_ref_blur.tif ctx_ref.tif \
+     ctx_dejittered $(pwd)
+   ```
+
+   The CaSSIS DEM is remade the usual way with *cassis_stereo.sh*, mapprojecting
+   the framelets onto the de-jittered CTX.
+
 ## License
 
 Apache License 2.0. See the LICENSE file.
