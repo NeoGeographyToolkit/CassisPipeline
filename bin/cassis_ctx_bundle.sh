@@ -61,7 +61,6 @@ parallel_bundle_adjust                    \
   --ip-per-tile 2000                      \
   --matches-per-tile 500                  \
   --ip-match-radius 20                    \
-  --ip-nodata-radius 0                    \
   --remove-outliers-params '75 3 100 100' \
   --max-pairwise-matches 20000            \
   --min-triangulation-angle 1e-10         \
