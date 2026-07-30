@@ -92,7 +92,11 @@ cam_of(){
 # stereo jobs and exhaust memory. When it is unset, prefer $PBS_NODEFILE (the PBS
 # allocation; bare nproc can return 1 inside a job), then nproc --all (ignores
 # affinity/OMP), then a literal fallback. So unset it behaves exactly as before.
-THR=${CASSIS_NPROC:-$( { [ -r "$PBS_NODEFILE" ] && wc -l < "$PBS_NODEFILE"; } 2>/dev/null || nproc --all 2>/dev/null || echo 8 )}
+if [ -n "$CASSIS_NPROC" ]; then
+  THR=$CASSIS_NPROC
+else
+  THR=$( { [ -r "$PBS_NODEFILE" ] && wc -l < "$PBS_NODEFILE"; } 2>/dev/null || nproc --all 2>/dev/null || echo 8 )
+fi
 case "$THR" in ''|*[!0-9]*) THR=8 ;; esac
 [ "$THR" -gt 128 ] && THR=128
 MK=$(( THR > 8 ? 8 : THR )); [ "$MK" -lt 1 ] && MK=1
@@ -231,7 +235,8 @@ echo "=== [2] $nx cross-look L-R pairs (match-file-verified) ==="
 # the frame DEM matches by construction. ms_cassis.py will become a general ASP multi_stereo tool.
 T=2
 if [ -n "$PBS_JOBID" ]; then
-  cores=${CASSIS_NPROC:-$( { [ -r "$PBS_NODEFILE" ] && wc -l < "$PBS_NODEFILE"; } 2>/dev/null || nproc 2>/dev/null )}
+  if [ -n "$CASSIS_NPROC" ]; then cores=$CASSIS_NPROC; else
+    cores=$( { [ -r "$PBS_NODEFILE" ] && wc -l < "$PBS_NODEFILE"; } 2>/dev/null || nproc 2>/dev/null ); fi
   case "$cores" in ''|*[!0-9]*) cores=28 ;; esac
   K=$(( cores / T ))
 else
