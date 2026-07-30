@@ -376,8 +376,21 @@ parameters, and result figures are documented at
 [Joint CTX and CaSSIS jitter solving](https://stereopipeline.readthedocs.io/en/latest/examples/cassis.html#cassis-jitter).
 
 The scripts below are run in order. The last argument to each is the work
-directory; all other paths are relative to it. ASP and ISIS must be on PATH first,
-and each script finds its sibling scripts by its own location.
+directory; all other paths are relative to it. Each script finds its sibling
+scripts by its own location, but the ASP and ISIS tools and the data roots must
+be set up in the environment first, before any script is run:
+
+```bash
+conda activate usgscsm_cassis
+export PATH=/path/to/CassisPipeline/bin:/path/to/StereoPipeline/bin:$PATH
+export ISISDATA=/path/to/isisdata       # ISIS data tree (kernels)
+export ALESPICEROOT=$ISISDATA           # ALE metakernel root
+```
+
+A packaged ASP release provides its own ISIS, so nothing more is needed. A
+development ASP build additionally needs `ISISROOT` pointing at an ISIS-capable
+environment so the CTX and CaSSIS `.cub` images can be read. The scripts do not
+set any of this themselves; they rely on this environment.
 
 1. Ingest the CTX pair to cubs and CSM linescan cameras following the CTX recipe
    (including the *ctxcal* radiometric calibration), then bundle-adjust the pair
