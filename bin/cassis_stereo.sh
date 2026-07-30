@@ -87,9 +87,12 @@ cam_of(){
 }
 
 # --- 1. mapproject each framelet (from the BA image list) with its BA cam onto the mapprojDem (parallel pool) ---
-# core count: prefer $PBS_NODEFILE (the PBS allocation; bare nproc can return 1 inside a
-# job), then nproc --all (ignores affinity/OMP), then a literal fallback.
-THR=$( { [ -r "$PBS_NODEFILE" ] && wc -l < "$PBS_NODEFILE"; } 2>/dev/null || nproc --all 2>/dev/null || echo 8 )
+# core count: CASSIS_NPROC (if the caller exported it) caps the parallel-job budget,
+# for small-RAM or shared hosts where using every core would run too many concurrent
+# stereo jobs and exhaust memory. When it is unset, prefer $PBS_NODEFILE (the PBS
+# allocation; bare nproc can return 1 inside a job), then nproc --all (ignores
+# affinity/OMP), then a literal fallback. So unset it behaves exactly as before.
+THR=${CASSIS_NPROC:-$( { [ -r "$PBS_NODEFILE" ] && wc -l < "$PBS_NODEFILE"; } 2>/dev/null || nproc --all 2>/dev/null || echo 8 )}
 case "$THR" in ''|*[!0-9]*) THR=8 ;; esac
 [ "$THR" -gt 128 ] && THR=128
 MK=$(( THR > 8 ? 8 : THR )); [ "$MK" -lt 1 ] && MK=1
@@ -183,7 +186,7 @@ open(pf_lr,'w').write('\n'.join('%s %s'%p for p in lr)+('\n' if lr else ''))
 open(pf_same,'w').write('\n'.join('%s %s'%p for p in same)+('\n' if same else ''))
 print("  pairs: LR %d  same-look %d (LL+RR)"%(len(lr),len(same)))
 PY
-  Td=2; cores=$(nproc 2>/dev/null || echo 4)
+  Td=2; cores=${CASSIS_NPROC:-$(nproc 2>/dev/null || echo 4)}
   [ -n "$PBS_JOBID" ] && [ -r "$PBS_NODEFILE" ] && cores=$(wc -l < "$PBS_NODEFILE")
   case "$cores" in ''|*[!0-9]*) cores=28 ;; esac
   Kd=$(( cores / Td )); [ "$Kd" -lt 1 ] && Kd=1; [ "$Kd" -gt 128 ] && Kd=128
@@ -228,11 +231,11 @@ echo "=== [2] $nx cross-look L-R pairs (match-file-verified) ==="
 # the frame DEM matches by construction. ms_cassis.py will become a general ASP multi_stereo tool.
 T=2
 if [ -n "$PBS_JOBID" ]; then
-  cores=$( { [ -r "$PBS_NODEFILE" ] && wc -l < "$PBS_NODEFILE"; } 2>/dev/null || nproc 2>/dev/null )
+  cores=${CASSIS_NPROC:-$( { [ -r "$PBS_NODEFILE" ] && wc -l < "$PBS_NODEFILE"; } 2>/dev/null || nproc 2>/dev/null )}
   case "$cores" in ''|*[!0-9]*) cores=28 ;; esac
   K=$(( cores / T ))
 else
-  cores=$(nproc 2>/dev/null || echo 4); K=$(( cores / T ))
+  cores=${CASSIS_NPROC:-$(nproc 2>/dev/null || echo 4)}; K=$(( cores / T ))
 fi
 [ "$K" -lt 1 ] && K=1; [ "$K" -gt 128 ] && K=128
 # Optional gentle cap for a workstation run: CASSIS_MAX_JOBS limits the per-pair stereo fan-out (and the
