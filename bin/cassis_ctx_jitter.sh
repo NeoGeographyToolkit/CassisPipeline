@@ -33,26 +33,27 @@ echo "=== [cassis_ctx_jitter] START $(date) images=$nI matchPrefix=$matchPrefix 
 # solved), so --max-initial-reprojection-error keeps them. Anchor 50/tile at 25 m uncertainty is the
 # recommended working set (see the doc); --num-lines-per-position/orientation are the CTX pose segment
 # lengths. Cameras are NOT extra-constrained (--camera-position-uncertainty is generous).
-jitter_solve                                    \
-  --image-list "$imageList"                     \
-  --camera-list "$cameraList"                   \
-  --clean-match-files-prefix "$matchPrefix"     \
-  --heights-from-dem "$refDem"                  \
-  --heights-from-dem-uncertainty 10             \
-  --anchor-dem "$refDem"                        \
-  --anchor-dem-uncertainty 25                   \
-  --num-anchor-points-per-tile 50               \
-  --camera-position-uncertainty 100,100         \
-  --num-lines-per-position 1000                 \
-  --num-lines-per-orientation 250               \
-  --max-pairwise-matches 20000                  \
-  --min-matches 1                               \
-  --min-triangulation-angle 1e-10               \
-  --max-initial-reprojection-error 500          \
-  --robust-threshold 0.5                        \
-  --num-passes 2                                \
-  --num-iterations 50                           \
-  --threads 8                                   \
-  -o "$outPrefix"                               \
+jitter_solve                                \
+  --image-list "$imageList"                 \
+  --camera-list "$cameraList"               \
+  --clean-match-files-prefix "$matchPrefix" \
+  --heights-from-dem "$refDem"              \
+  --heights-from-dem-uncertainty 10         \
+  --anchor-dem "$refDem"                    \
+  --anchor-dem-uncertainty 25               \
+  --num-anchor-points-per-tile 50           \
+  --camera-position-uncertainty 100,100     \
+  --num-lines-per-position 1000             \
+  --num-lines-per-orientation 250           \
+  --max-pairwise-matches 20000              \
+  --min-matches 1                           \
+  --min-triangulation-angle 1e-10           \
+  --forced-triangulation-distance 392000    \
+  --max-initial-reprojection-error 500      \
+  --robust-threshold 0.5                    \
+  --num-passes 2                            \
+  --num-iterations 50                       \
+  --threads 8                               \
+  -o "$outPrefix"                           \
   || { echo "STAGE_FAIL jitter_solve"; exit 1; }
 echo "=== [cassis_ctx_jitter] DONE $(date) -> $outPrefix ==="
