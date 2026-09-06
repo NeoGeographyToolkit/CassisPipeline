@@ -166,10 +166,11 @@ if want 5; then
   n5=$(ls "$startCamDir"/*.json 2>/dev/null | wc -l | tr -d ' ')
   echo "  start cams now: $n5 of $nref (already-done skipped: $done5)"
   [ "${n5:-0}" -ge 2 ] || { echo "STAGE5_FAIL too few start cams ($n5)"; exit 1; }
-  # sanity: c0 of a start cam must be the optimized-distortion c0 (~ -10.8048)
+  # sanity: c0 of a start cam must equal the first coefficient of optimized_distortion (whatever it is).
+  expc0=$(echo $optimized_distortion | awk '{printf "%.4f", $1}')
   c0=$(tail -n +2 "$(ls $startCamDir/*.json | head -1)" | python3 -c "import sys,json;print('%.4f'%json.load(sys.stdin).get('m_opticalDistCoeffs',[0])[0])" 2>/dev/null)
-  echo "  start-cam c0=$c0 (want -10.8048)"
-  case "$c0" in -10.8*) : ;; *) echo "STAGE5_FAIL c0 wrong ($c0)"; exit 1 ;; esac
+  echo "  start-cam c0=$c0 (want $expc0 = first optimized_distortion coeff)"
+  [ "$c0" = "$expc0" ] || { echo "STAGE5_FAIL c0 wrong ($c0 != $expc0)"; exit 1; }
   stage_done 5 "apply distortion" "$t"
 fi
 
