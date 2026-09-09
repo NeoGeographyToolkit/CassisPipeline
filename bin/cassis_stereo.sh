@@ -227,12 +227,12 @@ nx=$(wc -l < "$pf")
 echo "=== [2] $nx cross-look L-R pairs (match-file-verified) ==="
 [ "$nx" -ge 1 ] || { echo "ERROR no LR pairs derived"; exit 1; }
 
-# --- 3. per-pair stereo + point2dem + mosaic via ms_cassis.py (the multi_stereo engine) ---
+# --- 3. per-pair stereo + point2dem + mosaic via multi_stereo ---
 # Build the 4-column overlap list (left_map right_map left_cam right_cam) from the match-verified LR
-# pairs and the mapprojected framelets, then let ms_cassis.py run per-pair parallel_stereo (mapproj
+# pairs and the mapprojected framelets, then let multi_stereo run per-pair parallel_stereo (mapproj
 # input + trailing seed DEM), point2dem --errorimage, the CTX-relative blunder filter, and the DEM +
 # max-tri-error mosaics. The per-pair recipe below is identical to cassis_stereo_pair.sh dem mode, so
-# the frame DEM matches by construction. ms_cassis.py will become a general ASP multi_stereo tool.
+# the frame DEM matches by construction. multi_stereo is the ASP tool (dem_mosaic mode).
 T=2
 if [ -n "$PBS_JOBID" ]; then
   if [ -n "$CASSIS_NPROC" ]; then cores=$CASSIS_NPROC; else
@@ -255,27 +255,27 @@ while read -r L R; do
   echo "$out/maps/$L.tif $out/maps/$R.tif $Lc $Rc" >> "$ovl"
 done < "$pf"
 no=$(wc -l < "$ovl")
-echo "=== [3] ms_cassis.py stereo+dem+mosaic over $no pairs (-j $K, T=$T, cores=$cores) ==="
+echo "=== [3] multi_stereo stereo+dem+mosaic over $no pairs (-j $K, T=$T, cores=$cores) ==="
 [ "$no" -ge 1 ] || { echo "ERROR no overlap-list rows built"; exit 1; }
-python3 "$selfBin/ms_cassis.py" \
+multi_stereo \
   --overlap-list "$ovl" \
   --dem "$mapprojDem" \
   --ref-dem "$refDem" \
-  --out-dir "$out" \
+  --out-prefix "$out/dem_mosaic" \
   --mode dem_mosaic \
-  --num-parallel "$K" \
+  --processes "$K" \
   --blunder-tol "$blunderTolM" \
   --stereo-options "--processes 1 --threads-multiprocess $T --threads-singleprocess $T --alignment-method none --stereo-algorithm asp_mgm --subpixel-mode 9 --corr-seed-mode 1 --min-matches 5 --ip-per-tile 2000 --mapproj-geolocation-uncertainty 0 --ip-match-radius 20" \
-  --point2dem-options "--tr $demRes --max-valid-triangulation-error 8" \
-  || { echo "ms_cassis FAILED"; exit 1; }
+  --point2dem-options "--tr $demRes --errorimage --max-valid-triangulation-error 8" \
+  || { echo "multi_stereo FAILED"; exit 1; }
 
-# --- 4. frame DEM on the CTX grid (from the ms_cassis DEM mosaic) + hillshade + dz geodiff ---
-# ms_cassis.py already applied the CTX-relative blunder filter (it drops a per-pair DEM whose mean
+# --- 4. frame DEM on the CTX grid (from the multi_stereo DEM mosaic) + hillshade + dz geodiff ---
+# multi_stereo already applied the CTX-relative blunder filter (it drops a per-pair DEM whose mean
 # departs from refDem over its footprint by more than blunderTolM - relief-aware, keeps real high/low
 # terrain, drops only true blunders) and produced dem_mosaic-DEM.tif and the max tri-error mosaic
 # (section 5). Here we put the frame DEM on the sharp CTX grid, hillshade it, and geodiff it to CTX.
 mos=$out/cassis_dem
-[ -s "$out/dem_mosaic-DEM.tif" ] || { echo "ERROR ms_cassis produced no DEM mosaic ($out/dem_mosaic-DEM.tif)"; exit 1; }
+[ -s "$out/dem_mosaic-DEM.tif" ] || { echo "ERROR multi_stereo produced no DEM mosaic ($out/dem_mosaic-DEM.tif)"; exit 1; }
 cp -f "$out/dem_mosaic-DEM.tif" ${mos}.tif
 # ALWAYS -r cubicspline, never the gdalwarp default nearest-neighbor (nearest snaps/misregisters
 # a continuous DEM by up to half a pixel). CLAUDE.md rule.
@@ -284,7 +284,7 @@ gdalwarp -q -overwrite -t_srs "$PROJ" -te $TE -tr $demRes $demRes -r cubicspline
 gdaldem hillshade -az 300 -alt 25 -compute_edges ${mos}_on_ctx.tif ${mos}_on_ctx_hs.tif >/dev/null 2>&1 || true
 geodiff ${mos}_on_ctx.tif "$refDem" -o ${mos}_ctxdiff >/dev/null 2>&1 || true
 
-# --- 5. max tri-error mosaic (ray self-consistency) on the CTX grid, from the ms_cassis output ---
+# --- 5. max tri-error mosaic (ray self-consistency) on the CTX grid, from the multi_stereo output ---
 errmos=$out/max_tri_err
 if [ -s "$out/dem_mosaic-IntersectionErr.tif" ]; then
   cp -f "$out/dem_mosaic-IntersectionErr.tif" ${errmos}.tif
@@ -292,7 +292,7 @@ if [ -s "$out/dem_mosaic-IntersectionErr.tif" ]; then
     && echo "  max tri-error mosaic: ${errmos}_on_ctx.tif" \
     || echo "  WARN max_tri_err regrid skipped"
 else
-  echo "  WARN ms_cassis produced no tri-err mosaic ($out/dem_mosaic-IntersectionErr.tif)"
+  echo "  WARN multi_stereo produced no tri-err mosaic ($out/dem_mosaic-IntersectionErr.tif)"
 fi
 
 # --- 6. per-look ortho image mosaic (standard product; native res, plain dem_mosaic, no --max) ---

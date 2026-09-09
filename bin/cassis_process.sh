@@ -88,7 +88,7 @@ echo "  optimized_distortion(c0)=$(echo $optimized_distortion | awk '{print $1}'
 # briefly relaxed to 20260708 on 2026-07-16 when an l1 respin redeployed a build stamping 07-08,
 # since build date is not monotonic with content; the fresh 2026-07-17 build supersedes it.)
 if [ "$toStage" -ge 5 ]; then
-  minAspBuild=20260717   # the fresh CaSSIS-capable ASP build; keep pushing forward as fixes land
+  minAspBuild=20260908   # the fresh CaSSIS-capable ASP build; keep pushing forward as fixes land
   aspBuild=$(parallel_stereo --version 2>/dev/null | awk '/Build date:/ {gsub(/-/,"",$3); print $3; exit}')
   if [ -z "$aspBuild" ]; then
     echo "ERROR: cannot read the ASP build date. Is ASP on PATH? Try: parallel_stereo --version"; exit 1
