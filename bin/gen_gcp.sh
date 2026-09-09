@@ -1,10 +1,9 @@
 #!/bin/bash
-# CaSSIS GCP STAGE: dem2gcp tying our DEM to CTX via the warped-to-ref disparity.
-# Fixed stage; only paths change per run. Uses --match-files-prefix (our matches are
-# run-disp-*.match, NOT *-clean.match) - this is why the sfs dem2gcp.sh (which uses
-# --clean-match-files-prefix) is NOT reused. Replicates the validated dem2gcp_v7 call.
-# UNIVERSAL GCP: dem2gcp tying a DEM to CTX via the warped-to-ref disparity. ALL args REQUIRED, NO
-# silent defaults. Runs on the compute node (packaged ASP). Usage:
+# CaSSIS GCP stage: dem2gcp tying a DEM to CTX via the warped-to-ref disparity. Fixed
+# stage; only paths change per run. All args required, no silent defaults. Uses
+# --match-files-prefix (our matches are run-disp-*.match, not *-clean.match, so
+# --clean-match-files-prefix is not used). Runs on the compute node (packaged ASP).
+# Usage:
 #   gen_gcp.sh <warped_dem> <ref_dem> <disparity> <image_list> <camera_list> \
 #              <match_prefix> <max_disp> <gcp_out> <gcp_sigma> <max_gcp>
 umask 022
@@ -15,16 +14,16 @@ sigma=${9:?gcp_sigma}; maxgcp=${10:?max_gcp}
 # ASP/ISIS tools on PATH and environment are set up by the caller. See the README.
 mkdir -p "$(dirname "$gcp")"
 echo "dem2gcp: $(which dem2gcp)"
-dem2gcp \
-  --warped-dem "$warped" \
-  --ref-dem "$ref" \
+dem2gcp                             \
+  --warped-dem "$warped"            \
+  --ref-dem "$ref"                  \
   --warped-to-ref-disparity "$disp" \
-  --image-list "$img" \
-  --camera-list "$cams" \
-  --match-files-prefix "$mprefix" \
-  --max-pairwise-matches "$maxgcp" \
-  --max-num-gcp "$maxgcp" \
-  --gcp-sigma "$sigma" \
-  --max-disp "$maxdisp" \
+  --image-list "$img"               \
+  --camera-list "$cams"             \
+  --match-files-prefix "$mprefix"   \
+  --max-pairwise-matches "$maxgcp"  \
+  --max-num-gcp "$maxgcp"           \
+  --gcp-sigma "$sigma"              \
+  --max-disp "$maxdisp"             \
   --output-gcp "$gcp"
 echo "GCP_STAGE_DONE -> $gcp ($(grep -vc '^#' "$gcp" 2>/dev/null) gcp points, sigma $sigma maxgcp $maxgcp)"

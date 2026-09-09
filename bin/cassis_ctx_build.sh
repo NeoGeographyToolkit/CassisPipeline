@@ -1,9 +1,10 @@
 #!/bin/bash
-# cassis_ctx_build.sh - GENERAL CaSSIS CTX reference-DEM builder.
-# Encodes the projection/datum/grid policy, the CTX stack formation logic, and the critical
-# coverage gate. Two policy points: (i) pull the CTX "dem" asset (SPHERE/ellipsoid), NOT geoid_adjusted_dem
-# (areoid); (ii) snap the -te to ODD multiples of 9 so the CTX grid matches the point2dem phase.
-# Needs internet access (STAC queries + DEM downloads) and disk. Run on a machine with outside access.
+# cassis_ctx_build.sh - general CaSSIS CTX reference-DEM builder.
+# Encodes the projection/datum/grid policy, the CTX stack formation logic, and the
+# critical coverage gate. Two policy points: (i) pull the CTX "dem" asset
+# (sphere/ellipsoid), not geoid_adjusted_dem (areoid); (ii) snap the -te to odd
+# multiples of 9 so the CTX grid matches the point2dem phase. Needs internet access
+# (STAC queries + DEM downloads) and disk. Run on a machine with outside access.
 #
 # Args (all site-varying values explicit; algorithm constants are internal):
 #   $1 VENDOR_DTM  path to the vendor CaSSIS CAS-DTM .tif (defines the footprint + box)
@@ -20,13 +21,14 @@ W=$PWD
 [ -s "$VENDOR" ] || { echo "FATAL: vendor DTM not found: $VENDOR"; exit 1; }
 mkdir -p "$OUTDIR/dl"
 log=$W/output_ctx_build_${TAG}.txt; exec > "$log" 2>&1
-echo "=== [cassis_ctx_build $TAG] START $(date) host=$(uname -n) ==="
+echo "[cassis_ctx_build $TAG] START $(date) host=$(uname -n)"
 
 PROJ="+proj=stere +lat_0=$LAT0 +lon_0=$LON0 +k=1 +x_0=0 +y_0=0 +R=3396190 +units=m +no_defs"
-TRC=18; KPERBIN=5      # 18 m grid only; CTX native ~20m -> 18m in ONE hop, NEVER down to 4.59 m
+# 18 m grid only; CTX native ~20m -> 18m in one hop, never down to 4.59 m
+TRC=18; KPERBIN=5
 THRESH_STD=12; THRESH_MEAN=12; GROSS_STD=40; GROSS_MEAN=30; MIN_OVL_PCT=8; FLOOR=8
 
-echo "--- [0] 6x snapped box from vendor footprint ($(date)) ---"
+echo "[0] 6x snapped box from vendor footprint ($(date))"
 gdalwarp -q -overwrite -t_srs "$PROJ" -tr $TRC $TRC -r near "$VENDOR" "$OUTDIR/_vendor_localgrid.tif" >/dev/null 2>&1
 read TE0 TE1 TE2 TE3 TSX TSY BXW BXE BYS BYN <<<"$(python3 - "$OUTDIR/_vendor_localgrid.tif" "$LAT0" "$LON0" <<'PY'
 import subprocess,re,sys,math
@@ -47,7 +49,7 @@ echo "  snapped -te: $TE0 $TE1 $TE2 $TE3   TS: $TSX x $TSY   ($(( (TE2-TE0)/1000
 echo "  STAC lon/lat bbox: [$BXW, $BYS, $BXE, $BYN]"
 [ -n "$TE3" ] || { echo "FATAL: box computation failed"; exit 1; }
 
-echo "--- [1] STAC select CTX 'dem' assets over box (K=$KPERBIN per 0.1-deg lat bin) ($(date)) ---"
+echo "[1] STAC select CTX 'dem' assets over box (K=$KPERBIN per 0.1-deg lat bin) ($(date))"
 python3 - "$OUTDIR/ctx_list.txt" "$KPERBIN" "$BXW" "$BYS" "$BXE" "$BYN" <<'PY'
 import urllib.request,json,sys
 from collections import defaultdict
@@ -60,7 +62,7 @@ feats=json.load(urllib.request.urlopen(req,timeout=120)).get("features",[])
 best={}
 for f in feats:
     fid=f["id"]; a=f.get("assets",{}); href=None
-    for k in ("dem","geoid_adjusted_dem","dtm"):   # PREFER ellipsoid 'dem' (policy A1 fix)
+    for k in ("dem","geoid_adjusted_dem","dtm"):   # prefer ellipsoid 'dem' asset
         if k in a: href=a[k]["href"]; break
     bb=f.get("bbox",[None,None,None,None]); clat=(bb[1]+bb[3])/2 if bb[1] is not None else 0
     if href: best[fid]=(clat,href)
@@ -74,7 +76,7 @@ print("  available unique DTMs: %d ; selected %d across %d lat bins"%(len(best),
 PY
 NSEL=$(wc -l < "$OUTDIR/ctx_list.txt"); echo "  selected: $NSEL DTMs"
 
-echo "--- [2] download missing raw 'dem' DTMs ($(date)) ---"
+echo "[2] download missing raw 'dem' DTMs ($(date))"
 n=0; ok=0
 while IFS=$'\t' read -r fid href; do
   [ -n "$href" ] || continue; n=$((n+1)); dst="$OUTDIR/dl/${fid}_dem.tif"
@@ -84,7 +86,7 @@ while IFS=$'\t' read -r fid href; do
 done < "$OUTDIR/ctx_list.txt"
 echo "  have $ok / $n raw DTMs"
 
-echo "--- [3] warp ALL raw DTMs to $TRC m (cheap, for curation) ($(date)) ---"
+echo "[3] warp ALL raw DTMs to $TRC m (cheap, for curation) ($(date))"
 declare -A RAW; keepC=()
 while IFS=$'\t' read -r fid href; do
   raw="$OUTDIR/dl/${fid}_dem.tif"; [ -s "$raw" ] || continue
@@ -108,7 +110,7 @@ gd_stats () {
   rm -f "$gd" "$gd.aux.xml"; echo "${mn:-0} ${sd:-0} ${vp:-0}"
 }
 
-echo "--- pre-pass: drop ALL gross outliers (|mean|>$GROSS_MEAN or std>$GROSS_STD) ($(date)) ---"
+echo "pre-pass: drop ALL gross outliers (|mean|>$GROSS_MEAN or std>$GROSS_STD) ($(date))"
 rm -f "$OUTDIR"/_cons*.tif; dem_mosaic "${keepC[@]}" -o "$OUTDIR/_cons" >/dev/null 2>&1
 cons="$(ls "$OUTDIR"/_cons*.tif | head -1)"; newC=()
 for c in "${keepC[@]}"; do
@@ -120,7 +122,7 @@ keepC=( "${newC[@]}" ); echo "  after gross pre-pass: ${#keepC[@]} (from $NCAND)
 
 round=0
 while : ; do
-  round=$((round+1)); echo "--- curate round $round: ${#keepC[@]} inputs ($(date)) ---"
+  round=$((round+1)); echo "curate round $round: ${#keepC[@]} inputs ($(date))"
   rm -f "$OUTDIR"/_cons*.tif; dem_mosaic "${keepC[@]}" -o "$OUTDIR/_cons" >/dev/null 2>&1
   cons="$(ls "$OUTDIR"/_cons*.tif | head -1)"; [ -n "$cons" ] || { echo "FATAL: consensus failed"; exit 1; }
   worst=""; worst_score=-1; worst_line=""; worst_gross=0
@@ -145,14 +147,15 @@ print(gross, drop, (s+m) if drop else -1)")"
   fi
 done
 
-echo "=== final kept set (${#keepC[@]} of $NCAND) ==="
+echo "final kept set (${#keepC[@]} of $NCAND)"
 for c in "${keepC[@]}"; do echo "  $(basename "${RAW[$c]}")"; done
 
-# [4] Build the stack DIRECTLY at 18 m. The kept curation warps (keepC = *_warpC.tif) were already
-# regridded native ~20 m -> 18 m in step [3], so we just mean-mosaic THEM. We do NOT go to 4.59 m:
-# CTX native GSD is ~20 m, so 4.59 m is pure interpolation, and going FINER then back to 18 m forces
-# per-coarse-pixel averaging on the way down (lossy, undesirable) - Oleg 2026-07-11. One hop: 20->18.
-echo "--- [4] mean-mosaic the kept 18 m curation warps -> clean 18 m stack (native ~20m -> 18m, NO 4.59m) ($(date)) ---"
+# [4] Build the stack directly at 18 m. The kept curation warps (keepC = *_warpC.tif)
+# were already regridded native ~20 m -> 18 m in step [3], so we just mean-mosaic them.
+# We do not go to 4.59 m: CTX native GSD is ~20 m, so 4.59 m is pure interpolation, and
+# going finer then back to 18 m forces per-coarse-pixel averaging on the way down
+# (lossy, undesirable). One hop: 20 -> 18.
+echo "[4] mean-mosaic the kept 18 m curation warps -> clean 18 m stack (native ~20m -> 18m, NO 4.59m) ($(date))"
 rm -f "$OUTDIR"/_c18*.tif
 dem_mosaic "${keepC[@]}" -o "$OUTDIR/_c18" >/dev/null 2>&1
 mv "$(ls "$OUTDIR"/_c18*.tif | head -1)" "$OUTDIR/${TAG}_ctx_18m.tif"
@@ -160,11 +163,12 @@ dem_mosaic --dem-blur-sigma 5 "$OUTDIR/${TAG}_ctx_18m.tif" -o "$OUTDIR/_cb18" >/
 mv "$(ls "$OUTDIR"/_cb18*.tif | head -1)" "$OUTDIR/${TAG}_ctx_18m_blur5.tif"
 gdaldem hillshade -multidirectional -compute_edges "$OUTDIR/${TAG}_ctx_18m.tif" "$OUTDIR/${TAG}_ctx_18m_hillshade.tif" >/dev/null 2>&1
 
-echo "--- [D8] CRITICAL COVERAGE GATE: does the stack cover the vendor footprint? ($(date)) ---"
-# Margin note (Oleg): CaSSIS vs CTX can be misaligned a few hundred m up to ~1 km. The 6x box puts the
-# vendor deep inside, so the real test is a HOLE in the stack over the vendor area, not exact overlap.
-# Coverage = valid% where BOTH vendor and stack are valid, divided by vendor's own valid% (no osgeo:
-# geodiff is valid only where both inputs are valid, so its VALID_PERCENT gives the intersection).
+echo "[D8] CRITICAL COVERAGE GATE: does the stack cover the vendor footprint? ($(date))"
+# CaSSIS vs CTX can be misaligned a few hundred m up to ~1 km. The 6x box puts the
+# vendor deep inside, so the real test is a hole in the stack over the vendor area,
+# not exact overlap. Coverage = valid% where both vendor and stack are valid, divided
+# by vendor's own valid% (no osgeo: geodiff is valid only where both inputs are valid,
+# so its VALID_PERCENT gives the intersection).
 gdalwarp -q -overwrite -t_srs "$PROJ" -te $TE0 $TE1 $TE2 $TE3 -tr $TRC $TRC -r near "$VENDOR" "$OUTDIR/_vendor_on_stackgrid.tif" >/dev/null 2>&1
 vp_v=$(gdalinfo -stats "$OUTDIR/_vendor_on_stackgrid.tif" 2>/dev/null | sed -n 's/.*STATISTICS_VALID_PERCENT=//p' | head -1)
 rm -f "$OUTDIR"/_d8gd*.tif
@@ -176,12 +180,12 @@ python3 -c "
 vv=float('${vp_v:-0}' or 0); vb=float('${vp_b:-0}' or 0)
 cov=100.0*vb/vv if vv>0 else 0.0
 print('  vendor valid%%=%.3f  both-valid%%=%.3f  ->  COVERAGE = %.3f%% of vendor footprint'%(vv,vb,cov))
-print('  *** D8 GATE: %s ***' % ('PASS (>=99%% - vendor sits inside the stack)' if cov>=99.0 else ('MARGINAL (%.2f%% - inspect the hole location)'%cov if cov>=95.0 else 'FAIL - real HOLE over vendor footprint; abandon site, go to next')))
+print('  D8 GATE: %s' % ('PASS (>=99%% - vendor sits inside the stack)' if cov>=99.0 else ('MARGINAL (%.2f%% - inspect the hole location)'%cov if cov>=95.0 else 'FAIL - real HOLE over vendor footprint; abandon site, go to next')))
 "
 
-echo "--- [5] final stats ($(date)) ---"
+echo "[5] final stats ($(date))"
 for f in ${TAG}_ctx_18m.tif ${TAG}_ctx_18m_blur5.tif; do
   echo "  $f:"; gdalinfo -stats "$OUTDIR/$f" 2>/dev/null | grep -aE "Size is|VALID_PERCENT|STATISTICS_(MEAN|STDDEV|MIN|MAX)" | sed 's/^/     /'
 done
-echo "=== [cassis_ctx_build $TAG] DONE $(date) ==="
+echo "[cassis_ctx_build $TAG] DONE $(date)"
 echo "CASSIS_CTX_BUILD_DONE"

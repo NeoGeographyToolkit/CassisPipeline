@@ -1,8 +1,9 @@
 #!/bin/bash
-# cassis_ctx_stereo.sh - stereo of one CTX pair with GIVEN cameras (e.g. the jitter-refined ones),
-# producing a CTX DEM. Mapprojects both CTX images onto the blurred reference at the native CTX
-# resolution, then runs mapprojected stereo (alignment none) and point2dem. Used to remake the CTX
-# DEM after cassis_ctx_jitter.sh. See
+# cassis_ctx_stereo.sh - stereo of one CTX pair with given cameras (e.g. the
+# jitter-refined ones), producing a CTX DEM. Mapprojects both CTX images onto the
+# blurred reference at the native CTX resolution, then runs mapprojected stereo
+# (alignment none) and point2dem. Used to remake the CTX DEM after
+# cassis_ctx_jitter.sh. See
 # https://stereopipeline.readthedocs.io/en/latest/examples/cassis.html#cassis-jitter
 #
 # Args (currDir LAST; paths relative to it):
@@ -28,19 +29,19 @@ srs=$(gdalsrsinfo -o proj4 "$refDem" 2>/dev/null | tr -d '\n')
 mkdir -p "$outDir"
 lmap=$outDir/$(basename "${leftCub%.*}").map.tif
 rmap=$outDir/$(basename "${rightCub%.*}").map.tif
-echo "=== [cassis_ctx_stereo] START $(date) outDir=$outDir ==="
-# Mapproject at 6 m (native CTX GSD) onto the drape. Correlation is at that resolution; only the
-# output DEM is at the coarse 18 m grid.
+echo "[cassis_ctx_stereo] START $(date) outDir=$outDir"
+# Mapproject at 6 m (native CTX GSD) onto the drape. Correlation is at that
+# resolution; only the output DEM is at the coarse 18 m grid.
 mapproject --tr 6 --processes 2 --threads 2 "$drape" "$leftCub"  "$leftCam"  "$lmap" >/dev/null 2>&1 || { echo "STAGE_FAIL mapproject L"; exit 1; }
 mapproject --tr 6 --processes 2 --threads 2 "$drape" "$rightCub" "$rightCam" "$rmap" >/dev/null 2>&1 || { echo "STAGE_FAIL mapproject R"; exit 1; }
-parallel_stereo                       \
-  --alignment-method none             \
-  --stereo-algorithm asp_mgm          \
-  --processes 2                       \
-  --threads-multiprocess 4            \
+parallel_stereo                          \
+  --alignment-method none                \
+  --stereo-algorithm asp_mgm             \
+  --processes 2                          \
+  --threads-multiprocess 4               \
   "$lmap" "$rmap" "$leftCam" "$rightCam" \
-  "$outDir/run" "$drape"              \
+  "$outDir/run" "$drape"                 \
   || { echo "STAGE_FAIL parallel_stereo"; exit 1; }
 point2dem --errorimage --tr 18 --t_srs "$srs" "$outDir/run-PC.tif" -o "$outDir/ctx" \
   || { echo "STAGE_FAIL point2dem"; exit 1; }
-echo "=== [cassis_ctx_stereo] DONE $(date) -> $outDir/ctx-DEM.tif ==="
+echo "[cassis_ctx_stereo] DONE $(date) -> $outDir/ctx-DEM.tif"

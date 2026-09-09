@@ -1,18 +1,21 @@
 #!/bin/bash
-# cassis_pass.sh - ONE formalized replication PASS at 18 m (the BLOCK).
-# Steps: [1] BOOTSTRAP corr the aligned LINESCAN DEM vs CTX @corrRes -> dem2gcp -> GCP0 (NO framelet BA -
-# the linescan is the registration anchor); [2] TIC = BA fix-gcp GCP0 from the start cams (first joint
-# BA = the anchor); [3] TOC = BA no-gcp + htdem from the tic cams (vertical, keeps horizontal); [4] STEREO
-# mapproject/correlate NATIVE mapprojRes, point2dem demRes; [5] EVAL corr @corrRes -> dd-H/dd-V + dz (this
-# ONE corr also feeds dem2gcp); [6] dem2gcp @corrRes -> GCP1 (next block input). Reuses cassis_ba.sh,
-# cassis_stereo.sh, cassis_corr.sh, gen_gcp.sh. Self-contained under qsub. Compare vs frame/toc1_ht1_stereo.
-# Args (B LAST): <outDir> <startCamDir> <linescanDem> <refDem> <mapprojDem> <matchpfx> <Llook> <Rlook>
-#   <mapprojRes> <demRes> <corrRes> <corrSearch> <htUncLoose> <htUncTight> <camPosUnc> <robust> <gcpSigma>
-#   <maxGcp> <maxDisp> <geounc> <outTag> <inputCassisDir> <B>
+# cassis_pass.sh - one formalized replication pass at 18 m (the block).
+# Steps: [1] bootstrap corr the aligned linescan DEM vs CTX @corrRes -> dem2gcp -> GCP0
+# (no framelet BA: the linescan is the registration anchor); [2] tic = BA fix-gcp GCP0
+# from the start cams (first joint BA, the anchor); [3] toc = BA no-gcp + htdem from
+# the tic cams (vertical, keeps horizontal); [4] stereo mapproject/correlate native
+# mapprojRes, point2dem demRes; [5] eval corr @corrRes -> dd-H/dd-V + dz (this one corr
+# also feeds dem2gcp); [6] dem2gcp @corrRes -> GCP1 (next block input). Reuses
+# cassis_ba.sh, cassis_stereo.sh, cassis_corr.sh, gen_gcp.sh. Self-contained under
+# qsub. Compare vs frame/toc1_ht1_stereo.
+# Args (B LAST): <outDir> <startCamDir> <linescanDem> <refDem> <mapprojDem> <matchpfx>
+#   <Llook> <Rlook> <mapprojRes> <demRes> <corrRes> <corrSearch> <htUncLoose>
+#   <htUncTight> <camPosUnc> <robust> <gcpSigma> <maxGcp> <maxDisp> <geounc> <outTag>
+#   <inputCassisDir> <B>
 set +e; umask 022
-# Self-locate this stage script's bin dir and prepend it to PATH so its sibling pipeline scripts
-# (called by bare name) resolve whether this runs via cassis_process.sh or directly. bash searches
-# PATH for a script filename with no slash, so this makes bare-name sibling calls work standalone.
+# Self-locate this script's bin dir and prepend it to PATH so its sibling pipeline
+# scripts (called by bare name) resolve whether this runs via cassis_process.sh or
+# directly (bash searches PATH for a filename with no slash).
 selfBin=$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd); [ -n "$selfBin" ] && export PATH="$selfBin:$PATH"
 outDir=${1:?outDir}; startCamDir=${2:?startCamDir (start cams)}; linescanDem=${3:?linescan aligned DEM}
 refDem=${4:?refDem (SHARP CTX)}; mapprojDem=${5:?mapprojDem (BLURRED CTX)}; matchpfx=${6:?matchpfx}
@@ -25,7 +28,7 @@ cd "$B" || { echo "ERROR cannot cd $B"; exit 1; }
 # ASP/ISIS tools on PATH and environment are set up by the caller. See the README.
 source cassis_env_check.sh   # sid-based cub finders (cassis_cub_for_stem)
 log=$B/output_${outTag}_pass.txt; exec > "$log" 2>&1
-echo "=== [cassis_pass] START $(date) host=$(uname -n) outTag=$outTag ==="
+echo "[cassis_pass] START $(date) host=$(uname -n) outTag=$outTag"
 echo "  outDir=$outDir startCamDir=$startCamDir linescanDem=$linescanDem"
 echo "  mapprojRes=$mapprojRes demRes=$demRes corrRes=$corrRes corrSearch=$corrSearch"
 echo "  htUncLoose=$htUncLoose htUncTight=$htUncTight camPosUnc=$camPosUnc robust=$robust gcpSigma=$gcpSigma"
@@ -45,8 +48,8 @@ done
 nI=$(wc -l < "$img"); echo "  lists: images=$nI cameras=$(wc -l < "$cam")"
 [ "$nI" -ge 2 ] || { echo "ERROR too few images ($nI)"; exit 1; }
 
-# === [1] BOOTSTRAP: corr the LINESCAN DEM vs CTX @corrRes, then dem2gcp -> GCP0 ===
-echo "=== [1/6] BOOTSTRAP corr linescan vs CTX @${corrRes}m + dem2gcp $(date) ==="
+# stage 1: bootstrap corr the linescan DEM vs CTX @corrRes, then dem2gcp -> GCP0
+echo "[1/6] BOOTSTRAP corr linescan vs CTX @${corrRes}m + dem2gcp $(date)"
 boot=$G/boot
 bash cassis_corr.sh "$linescanDem" "$refDem" "$corrRes" "$corrSearch" "$boot" 15 \
   || { echo "STAGE_FAIL boot corr"; exit 1; }
@@ -55,29 +58,29 @@ bash gen_gcp.sh "$boot/warped_${corrRes}m.tif" "$boot/ctx_${corrRes}m.tif" "$boo
   "$img" "$cam" "$matchpfx" "$maxDisp" "$gcp0" "$gcpSigma" "$maxGcp" || { echo "STAGE_FAIL boot gcp"; exit 1; }
 echo "  GCP0: $gcp0 ($(grep -vc '^#' "$gcp0" 2>/dev/null) pts)"
 
-# === [2] TIC: first joint BA, fix-gcp GCP0 (from the start cams) - horizontal anchor ===
-echo "=== [2/6] TIC BA fix-gcp $(date) ==="
+# stage 2: tic first joint BA, fix-gcp GCP0 (from the start cams), horizontal anchor
+echo "[2/6] TIC BA fix-gcp $(date)"
 bash cassis_ba.sh "$outDir" "${outTag}_tic" "$img" "$cam" "$refDem" "$matchpfx" \
   "$htUncLoose" "$camPosUnc" "$gcp0" yes "$robust" no_intr_float "$B" || { echo "STAGE_FAIL tic"; exit 1; }
 ticImg=$outDir/frame/${outTag}_tic/run-image_list.txt; ticCam=$outDir/frame/${outTag}_tic/run-camera_list.txt
 [ -s "$ticImg" ] && [ -s "$ticCam" ] || { echo "STAGE_FAIL tic produced no lists"; exit 1; }
 
-# === [3] TOC: BA no-gcp + htdem from the tic cams - vertical, keeps horizontal ===
-echo "=== [3/6] TOC BA no-gcp htdem $htUncTight $(date) ==="
+# stage 3: toc BA no-gcp + htdem from the tic cams, vertical, keeps horizontal
+echo "[3/6] TOC BA no-gcp htdem $htUncTight $(date)"
 bash cassis_ba.sh "$outDir" "$outTag" "$ticImg" "$ticCam" "$refDem" "$matchpfx" \
   "$htUncTight" "$camPosUnc" no_gcp no "$robust" no_intr_float "$B" || { echo "STAGE_FAIL toc"; exit 1; }
 outImg=$outDir/frame/$outTag/run-image_list.txt; outCam=$outDir/frame/$outTag/run-camera_list.txt
 [ -s "$outImg" ] && [ -s "$outCam" ] || { echo "STAGE_FAIL toc produced no lists"; exit 1; }
 
-# === [4] STEREO: mapproject/correlate NATIVE mapprojRes, point2dem demRes ===
-echo "=== [4/6] STEREO mapproj $mapprojRes DEM $demRes $(date) ==="
+# stage 4: stereo mapproject/correlate native mapprojRes, point2dem demRes
+echo "[4/6] STEREO mapproj $mapprojRes DEM $demRes $(date)"
 bash cassis_stereo.sh "$outDir" "$outTag" "$outImg" "$outCam" "$geounc" "$mapprojDem" "$refDem" \
   "$mapprojRes" "$demRes" "$matchpfx" "$Llook" "$Rlook" 0 "$B" || { echo "STAGE_FAIL stereo"; exit 1; }
 dem=$outDir/frame/${outTag}_stereo/cassis_dem.tif
 [ -s "$dem" ] || { echo "STAGE_FAIL stereo produced no DEM $dem"; exit 1; }
 
-# === [5] EVAL corr @corrRes (dd-H/dd-V) + dz. This ONE corr also feeds dem2gcp in [6]. ===
-echo "=== [5/6] EVAL corr @${corrRes}m + dz $(date) ==="
+# stage 5: eval corr @corrRes (dd-H/dd-V) + dz. This one corr also feeds dem2gcp in [6].
+echo "[5/6] EVAL corr @${corrRes}m + dz $(date)"
 evd=$outDir/frame/${outTag}_stereo/eval18
 bash cassis_corr.sh "$dem" "$refDem" "$corrRes" "$corrSearch" "$evd" 15 || echo "  WARN eval corr failed"
 geodiff "$evd/warped_${corrRes}m.tif" "$evd/ctx_${corrRes}m.tif" -o "$evd/dz" >/dev/null 2>&1 || echo "  WARN dz failed"
@@ -85,8 +88,8 @@ echo "  dz  std vs CTX (m):  $(gdalinfo -stats $evd/dz-diff.tif 2>/dev/null | gr
 echo "  dd-H std (px):       $(gdalinfo -stats $evd/run-F-H.tif 2>/dev/null | grep -a STATISTICS_STDDEV | sed 's/.*=//')"
 echo "  dd-V std (px):       $(gdalinfo -stats $evd/run-F-V.tif 2>/dev/null | grep -a STATISTICS_STDDEV | sed 's/.*=//')"
 
-# === [6] dem2gcp @corrRes -> GCP1 (next block input) ===
-echo "=== [6/6] dem2gcp @${corrRes}m -> GCP1 $(date) ==="
+# stage 6: dem2gcp @corrRes -> GCP1 (next block input)
+echo "[6/6] dem2gcp @${corrRes}m -> GCP1 $(date)"
 gcp1=$G/dem2gcp/gcp1.gcp
 bash gen_gcp.sh "$evd/warped_${corrRes}m.tif" "$evd/ctx_${corrRes}m.tif" "$evd/run-F.tif" \
   "$outImg" "$outCam" "$matchpfx" "$maxDisp" "$gcp1" "$gcpSigma" "$maxGcp" || echo "  WARN dem2gcp failed"

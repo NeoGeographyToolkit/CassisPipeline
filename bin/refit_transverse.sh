@@ -1,16 +1,17 @@
 #!/bin/bash
-# refit_transverse.sh - refit every CaSSIS framelet's distortion from native CASSIS (USGSCSM
-# type 9) to CSM TRANSVERSE, keeping each framelet's EXACT pose+intrinsics (the patched cam_gen
-# --csm-refit-distortion), then cam_test each refit vs its original CASSIS camera. Runs both
-# looks in one call, into the shared registered_cassis_cams directory.
-# NOTE (2026-07-01): per-framelet refit is FINE. --refine-intrinsics distortion PRESERVES
-# all non-distortion intrinsics (focal, ccd center, pixel pitch, iTransS/L - verified
-# identical to the CASSIS input), and since it is one physical lens the fitted transverse
-# distortion comes out IDENTICAL across framelets - so it equals borrowing one shared
-# distortion (the BA's --intrinsics-to-share all is then just a no-op copy of that value).
+# refit_transverse.sh - refit every CaSSIS framelet's distortion from native CASSIS
+# (USGSCSM type 9) to CSM transverse, keeping each framelet's exact pose+intrinsics (the
+# patched cam_gen --csm-refit-distortion), then cam_test each refit vs its original
+# CASSIS camera. Runs both looks in one call, into the shared registered_cassis_cams
+# directory. Per-framelet refit is fine: --refine-intrinsics distortion preserves all
+# non-distortion intrinsics (focal, ccd center, pixel pitch, iTransS/L, verified
+# identical to the CASSIS input), and since it is one physical lens the fitted
+# transverse distortion comes out identical across framelets, so it equals borrowing
+# one shared distortion (the BA's --intrinsics-to-share all is then just a no-op copy
+# of that value).
 #
-# Config-driven: reads inputCassisDir + Llook/Rlook (input) and writes the refit cams under outDir.
-# The datum defaults to the refitDatum constant (D_MARS).
+# Config-driven: reads inputCassisDir + Llook/Rlook (input) and writes the refit cams
+# under outDir. The datum defaults to the refitDatum constant (D_MARS).
 # Usage: refit_transverse.sh <site.conf> <outDir> <workdir>
 set -e
 umask 022
@@ -38,12 +39,13 @@ summary="$out_dir/camtest_summary.txt"
 echo "name  center_diff_m  dir_diff_rad  pix_diff_median" > "$summary"
 shopt -s nullglob
 
-# Loop both looks into the shared output directory. Look 1 = Llook, look 2 = Rlook; the input
-# cameras are the aligned framelets, and each framelet's cub is found in inputCassisDir by its stem.
+# Loop both looks into the shared output directory. Look 1 = Llook, look 2 = Rlook; the
+# input cameras are the aligned framelets, and each framelet's cub is found in
+# inputCassisDir by its stem.
 n=1
 for sid in "$Llook" "$Rlook"; do
   cam_dir=$outDir/frame/aligned_framelets/$sid
-  echo "=== refit look $n (sid $sid): $cam_dir -> $out_dir ==="
+  echo "refit look $n (sid $sid): $cam_dir -> $out_dir"
   # accept aligned-<stem> (CTX-aligned framelets), run-<X>, or bare <stem>.json
   cams=( "$cam_dir"/aligned-*.adjusted_state.json )
   [ ${#cams[@]} -eq 0 ] && cams=( "$cam_dir"/run-*.adjusted_state.json )
@@ -55,13 +57,13 @@ for sid in "$Llook" "$Rlook"; do
     [ -s "$out" ] && { echo "$name exists, skipping"; continue; }
     if [ ! -f "$img" ]; then echo "$name MISSING_IMAGE $img" | tee -a "$summary"; continue; fi
     # Refit transverse, exact pose, distortion only.
-    cam_gen "$img" \
-      --input-camera "$cam" \
-      --csm-refit-distortion \
-      --distortion-type transverse \
+    cam_gen "$img"                   \
+      --input-camera "$cam"          \
+      --csm-refit-distortion         \
+      --distortion-type transverse   \
       --refine-intrinsics distortion \
-      --datum "$datum" \
-      --num-pixel-samples 4000 \
+      --datum "$datum"               \
+      --num-pixel-samples 4000       \
       -o "$out" > "$out_dir/$name-camgen.log" 2>&1
     # cam_test refit vs original.
     cam_test --image "$img" --cam1 "$cam" --cam2 "$out" --sample-rate 50 \

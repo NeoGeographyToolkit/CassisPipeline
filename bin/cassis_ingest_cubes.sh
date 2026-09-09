@@ -1,11 +1,12 @@
 #!/bin/bash
-# cassis_ingest_cubes.sh - GENERIC CaSSIS framelet -> ISIS cube ingest (NO kernels).
+# cassis_ingest_cubes.sh - generic CaSSIS framelet -> ISIS cube ingest (no kernels).
 # Parametrized by the site data root. For each look dir under it whose .dat count
 # == .xml count: tgocassis2isis on each calibrated framelet .xml -> .cub, then inject
-# SpacecraftClockStartCount from the XML hex-ASCII exposuretimestamp (PSA-export framelets lack the
-# clock keyword camera init needs; OBSOLETED by ISIS PR 6079 once that reaches the build). Idempotent
-# (skips framelets that already have a .cub). Camera generation is done SEPARATELY, with
-# cassis_make_cameras.sh. NO `set -u` (conda hooks use unbound vars).
+# SpacecraftClockStartCount from the XML hex-ASCII exposuretimestamp (PSA-export
+# framelets lack the clock keyword camera init needs; obsoleted by ISIS PR 6079 once
+# that reaches the build). Idempotent (skips framelets that already have a .cub).
+# Camera generation is done separately, with cassis_make_cameras.sh. No `set -u`
+# (conda hooks use unbound vars).
 #   Arg: $1 = site data root; the looks are its L*_* subdirectories.
 SITEDATA=${1:?usage: cassis_ingest_cubes.sh <site data root>}
 # find our sibling scripts whether we were invoked by path or via PATH (bare name)
@@ -25,7 +26,7 @@ for look in "$SITEDATA"/L*_*; do
   [ "$nd" -ge 1 ] && [ "$nd" = "$nx" ] || { echo "skip (incomplete $nd/$nx): $look"; continue; }
   done_cub=$(ls "$look"/*.cub 2>/dev/null | wc -l | tr -d ' ')
   [ "$done_cub" = "$nd" ] && { echo "already ingested: $look"; continue; }
-  echo "=== ingest $look ($nd framelets) ==="
+  echo "ingest $look ($nd framelets)"
   for xml in "$look"/*.xml; do
     cub="${xml%.xml}.cub"
     [ -s "$cub" ] && continue

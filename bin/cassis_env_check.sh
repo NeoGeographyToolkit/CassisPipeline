@@ -3,12 +3,14 @@
 # Fails early and clearly if the conda environment or the tools a stage needs are missing,
 # instead of dying deep inside a long run. Self-contained: defines shell functions only.
 #
-# The pipeline expects an ACTIVATED conda environment (provides gdal, proj, and for the prep
-# stages ALE, isd_generate, and the CSM plugin) plus, for the heavy stages, a packaged ASP build
-# on PATH. Two environments are in play (ingest vs cameras+processing); see the README. We
-# deliberately use the conda env's own isd_generate, not any older copy bundled with ASP.
+# The pipeline expects an activated conda environment (provides gdal, proj, and for
+# the prep stages ALE, isd_generate, and the CSM plugin) plus, for the heavy stages,
+# a packaged ASP build on PATH. Two environments are in play (ingest vs
+# cameras+processing); see the README. We deliberately use the conda env's own
+# isd_generate, not any older copy bundled with ASP.
 
-# cassis_require <cmd> [<cmd> ...] - CONDA_PREFIX must be set and every command must be on PATH.
+# cassis_require <cmd> [<cmd> ...] - CONDA_PREFIX must be set and every command must
+# be on PATH.
 cassis_require() {
   if [ -z "${CONDA_PREFIX:-}" ]; then
     echo "ERROR: CONDA_PREFIX is not set. Activate the pipeline conda environment first (see the README)."
@@ -21,16 +23,17 @@ cassis_require() {
   [ "$miss" -eq 0 ] || { echo "  Activate the correct environment or put the tool on PATH (README Environment section)."; exit 1; }
 }
 
-# cassis_require_isisdata - ISISDATA (the ISIS data tree) must be set and exist. Every step that
-# touches ISIS data or kernels needs it (cassis2isis and isd_generate both).
+# cassis_require_isisdata - ISISDATA (the ISIS data tree) must be set and exist. Every
+# step that touches ISIS data or kernels needs it (cassis2isis and isd_generate both).
 cassis_require_isisdata() {
   [ -n "${ISISDATA:-}" ] || { echo "ERROR: ISISDATA is not set (the ISIS data tree). Set it before running."; exit 1; }
   [ -d "$ISISDATA" ] || { echo "ERROR: ISISDATA=$ISISDATA does not exist."; exit 1; }
 }
 
-# cassis_require_ale - the CaSSIS camera step (isd_generate) needs the conda env's ALE + CSM plugin
-# (not ASP's older bundled copies) + gdal, plus two data roots: ISISDATA (ISIS data tree) and
-# ALESPICEROOT (the ALE SPICE / metakernel data, where isd_generate finds the CaSSIS metakernels).
+# cassis_require_ale - the CaSSIS camera step (isd_generate) needs the conda env's ALE
+# + CSM plugin (not ASP's older bundled copies) + gdal, plus two data roots: ISISDATA
+# (ISIS data tree) and ALESPICEROOT (the ALE SPICE / metakernel data, where
+# isd_generate finds the CaSSIS metakernels).
 cassis_require_ale() {
   cassis_require gdal_translate
   [ -x "$CONDA_PREFIX/bin/isd_generate" ] || { echo "ERROR: $CONDA_PREFIX/bin/isd_generate not found. Activate the CaSSIS ALE/usgscsm environment."; exit 1; }
@@ -41,24 +44,28 @@ cassis_require_ale() {
   [ -d "$ALESPICEROOT" ] || { echo "ERROR: ALESPICEROOT=$ALESPICEROOT does not exist."; exit 1; }
 }
 
-# cassis_isd_generate <args> - run the conda env's isd_generate (never ASP's). On failure, hint at ALE.
+# cassis_isd_generate <args> - run the conda env's isd_generate (never ASP's). On
+# failure, hint at ALE.
 cassis_isd_generate() {
   local isd="$CONDA_PREFIX/bin/isd_generate"
   [ -x "$isd" ] || { echo "ERROR: $isd not found. Activate the CaSSIS ALE/usgscsm environment."; exit 1; }
   "$isd" "$@" || { echo "ERROR: isd_generate failed. Check that you have a recent enough ALE (with CaSSIS support)."; return 1; }
 }
 
-# --- input look-up helpers: find framelet cubs by the LOOK ID in the filename ---
-# The cube filename is cas_cal_sc_...-PAN-<sid>-<framelet>-0__4_0.cub, so a look is identified by its
-# sid, not by any subdir name. We only require the two looks' cubs be somewhere under inputCassisDir
-# (flat, or one subdir deep such as our fetch's L1_<sid>/). No L1_/L2_ naming is assumed.
+# input look-up helpers: find framelet cubs by the look ID in the filename
+# The cube filename is cas_cal_sc_...-PAN-<sid>-<framelet>-0__4_0.cub, so a look is
+# identified by its sid, not by any subdir name. We only require the two looks' cubs
+# be somewhere under inputCassisDir (flat, or one subdir deep such as our fetch's
+# L1_<sid>/). No L1_/L2_ naming is assumed.
 
-# cassis_look_cubs <inputCassisDir> <sid> - echo the cubs for a look (found by sid), sorted.
+# cassis_look_cubs <inputCassisDir> <sid> - echo the cubs for a look (found by sid),
+# sorted.
 cassis_look_cubs() {
   ls "$1"/*/*-"$2"-*-0__4_0.cub "$1"/*-"$2"-*-0__4_0.cub 2>/dev/null | sort -u
 }
 
-# cassis_cub_for_stem <inputCassisDir> <stem> - echo the single cub named <stem>.cub (first match).
+# cassis_cub_for_stem <inputCassisDir> <stem> - echo the single cub named <stem>.cub
+# (first match).
 cassis_cub_for_stem() {
   ls "$1"/*/"$2".cub "$1"/"$2".cub 2>/dev/null | head -1
 }

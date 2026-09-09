@@ -1,13 +1,14 @@
 #!/bin/bash
-# cassis_ctx_jitter.sh - joint CTX (linescan) + CaSSIS (frame) jitter solve, the pixel-level
-# CTX<->CaSSIS refinement documented at
+# cassis_ctx_jitter.sh - joint CTX (linescan) + CaSSIS (frame) jitter solve, the
+# pixel-level CTX<->CaSSIS refinement documented at
 # https://stereopipeline.readthedocs.io/en/latest/examples/cassis.html#cassis-jitter
-# Refines the CTX linescan pose samples and the CaSSIS frame poses together, tied by the clean
-# matches from the joint bundle (cassis_ctx_bundle.sh) and constrained to the jitter-free CTX
-# reference DEM with --heights-from-dem plus a dense, tight anchor grid. The anchor uncertainty is
-# the key knob: too loose and the CTX poses over-fit the ties and the stereo DEM fragments; 25 m
-# holds it. The input cameras are the already CTX-aligned ones (cassis_ctx_align.sh output for CTX,
-# the pass cameras for CaSSIS). Mars. Single node, threaded.
+# Refines the CTX linescan pose samples and the CaSSIS frame poses together, tied by
+# the clean matches from the joint bundle (cassis_ctx_bundle.sh) and constrained to
+# the jitter-free CTX reference DEM with --heights-from-dem plus a dense, tight anchor
+# grid. The anchor uncertainty is the key knob: too loose and the CTX poses over-fit
+# the ties and the stereo DEM fragments; 25 m holds it. The input cameras are the
+# already CTX-aligned ones (cassis_ctx_align.sh output for CTX, the pass cameras for
+# CaSSIS). Mars. Single node, threaded.
 #
 # Args (currDir LAST; all other paths are relative to it):
 #   imageList    one image (cub) per line, CaSSIS framelets then the two CTX cubs
@@ -28,11 +29,12 @@ for f in "$imageList" "$cameraList" "$refDem"; do [ -s "$f" ] || { echo "ERROR m
 nI=$(wc -l < "$imageList"); nC=$(wc -l < "$cameraList")
 [ "$nI" = "$nC" ] || { echo "ERROR image/camera count $nI != $nC"; exit 1; }
 mkdir -p "$(dirname "$outPrefix")"
-echo "=== [cassis_ctx_jitter] START $(date) images=$nI matchPrefix=$matchPrefix ==="
-# The cross-sensor ties start with a large reprojection error (that misregistration is what is being
-# solved), so --max-initial-reprojection-error keeps them. Anchor 50/tile at 25 m uncertainty is the
-# recommended working set (see the doc); --num-lines-per-position/orientation are the CTX pose segment
-# lengths. Cameras are NOT extra-constrained (--camera-position-uncertainty is generous).
+echo "[cassis_ctx_jitter] START $(date) images=$nI matchPrefix=$matchPrefix"
+# The cross-sensor ties start with a large reprojection error (that misregistration
+# is what is being solved), so --max-initial-reprojection-error keeps them. Anchor
+# 50/tile at 25 m uncertainty is the recommended working set (see the doc);
+# --num-lines-per-position/orientation are the CTX pose segment lengths. Cameras are
+# not extra-constrained (--camera-position-uncertainty is generous).
 jitter_solve                                \
   --image-list "$imageList"                 \
   --camera-list "$cameraList"               \
@@ -56,4 +58,4 @@ jitter_solve                                \
   --threads 8                               \
   -o "$outPrefix"                           \
   || { echo "STAGE_FAIL jitter_solve"; exit 1; }
-echo "=== [cassis_ctx_jitter] DONE $(date) -> $outPrefix ==="
+echo "[cassis_ctx_jitter] DONE $(date) -> $outPrefix"

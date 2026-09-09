@@ -1,12 +1,13 @@
 #!/bin/bash
-# Decompose the bundle-adjusted, CTX-aligned linescan states into per-framelet aligned FRAME
-# cameras (the aligned_framelets). Each aligned framelet = the framelet cube's FRAME CSM state
-# (correct CASSIS optics + distortion, from a 0-iteration bundle_adjust) with its pose REPLACED
-# by the aligned linescan node for that framelet. So the framelets inherit the tie bundle
-# adjustment and the CTX alignment; the per-framelet bundle starts already on CTX.
+# Decompose the bundle-adjusted, CTX-aligned linescan states into per-framelet aligned
+# frame cameras (the aligned_framelets). Each aligned framelet = the framelet cube's
+# frame CSM state (correct CASSIS optics + distortion, from a 0-iteration bundle_adjust)
+# with its pose replaced by the aligned linescan node for that framelet. So the
+# framelets inherit the tie bundle adjustment and the CTX alignment; the per-framelet
+# bundle starts already on CTX.
 #
-# Config-driven: reads inputCassisDir + Llook/Rlook (input) and the aligned states under outDir,
-# and does both looks in one call.
+# Config-driven: reads inputCassisDir + Llook/Rlook (input) and the aligned states
+# under outDir, and does both looks in one call.
 # Usage: linescan2framelets.sh <site.conf> <outDir> <workdir>
 set -e
 umask 022
@@ -36,14 +37,14 @@ for entry in "L $Llook" "R $Rlook"; do
   cubes=$(cassis_look_cubs "$inputCassisDir" "$sid")
   nc=$(echo "$cubes" | grep -c .)
   isds=$(for c in $cubes; do echo ${c%.cub}.json; done)
-  echo "=== [aligned_framelets $look $sid] $nc framelet cubes ==="
+  echo "[aligned_framelets $look $sid] $nc framelet cubes"
 
-  echo "=== [aligned_framelets] 0-iter BA: framelet cubes -> raw frame CSM states ==="
+  echo "[aligned_framelets] 0-iter BA: framelet cubes -> raw frame CSM states"
   bundle_adjust $cubes $isds --inline-adjustments --num-iterations 0 \
     --overlap-limit 1 --min-matches 0 --ip-per-image 500 -o $out/raw \
     > $out/ba0_log.txt 2>&1 || { echo "0-iter BA failed; see $out/ba0_log.txt"; tail -5 $out/ba0_log.txt; exit 1; }
 
-  echo "=== [aligned_framelets] pose-swap raw frame states with aligned linescan nodes ==="
+  echo "[aligned_framelets] pose-swap raw frame states with aligned linescan nodes"
   python3 - "$state" "$out" "$sid" <<'PY'
 import json, glob, re, sys
 state_file, out, sid = sys.argv[1], sys.argv[2], sys.argv[3]
@@ -70,6 +71,6 @@ for raw in sorted(glob.glob(f'{out}/raw-*-{sid}-*-0__4_0.adjusted_state.json')):
     n += 1
 print(f"  wrote {n} aligned framelet states for {sid} (of {nnodes} nodes)")
 PY
-  echo "=== aligned framelet states: $(ls $out/aligned-*.json 2>/dev/null | wc -l | tr -d ' ') ==="
+  echo "aligned framelet states: $(ls $out/aligned-*.json 2>/dev/null | wc -l | tr -d ' ')"
 done
 echo "ALIGNED_FRAMELETS_DONE $outDir"

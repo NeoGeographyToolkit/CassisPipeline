@@ -1,9 +1,12 @@
 #!/bin/bash
-# cassis_fetch_pair.sh - GENERIC per-pair CaSSIS calibrated PAN framelet fetch from the ESA PSA archive.
+# cassis_fetch_pair.sh - generic per-pair CaSSIS calibrated PAN framelet fetch from
+# the ESA PSA archive.
 # Args:
 #   $1 orbit    (e.g. 4756)              $2 acq1 (L/STEREO1 sid)   $3 acq2 (R/STEREO2 sid)
-#   $4 destDir  (e.g. data/MY34_004756_354_1 - a CLEAN root, NOT the legacy data/jezero misnomer)
-# Downloads .dat/.xml PAN framelets (skips sti) into $destDir/L1_$acq1/ and L2_$acq2/. Resumable.
+#   $4 destDir  (e.g. data/MY34_004756_354_1 - a clean root, not the legacy
+#               data/jezero misnomer)
+# Downloads .dat/.xml PAN framelets (skips sti) into $destDir/L1_$acq1/ and
+# L2_$acq2/. Resumable.
 # Runs anywhere with outside (internet) access. PSA is slow (~0.5-1 file/s).
 set -u
 orbit="$1"; a1="$2"; a2="$3"; DEST="$4"
@@ -14,7 +17,7 @@ B="https://archives.esac.esa.int/psa/ftp/ExoMars2016/em16_tgo_cas/data_calibrate
 n=1
 for acq in "$a1" "$a2"; do
   out="$DEST/L${n}_$acq"; mkdir -p "$out"
-  echo "=== L$n orbit $orbit acq $acq -> $out ($(date)) ==="
+  echo "L$n orbit $orbit acq $acq -> $out ($(date))"
   files=$(curl -sL --max-time 90 -A "$UA" "$B/$acq/PAN/" 2>/dev/null \
     | grep -ioE 'href="cas_cal[^"]*"' | sed 's/href="//;s/"//' \
     | grep -vi sti | grep -iE '\.(dat|xml)$' | sort -u)

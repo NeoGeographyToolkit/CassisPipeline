@@ -1,6 +1,6 @@
 #!/bin/bash
-# CaSSIS dem2gcp CORRELATOR stage, parameterized by resolution + search radius.
-# Warps two DEMs to a COMMON grid (taken from <ref_ctx> proj+extent) at <res> m with
+# CaSSIS dem2gcp correlator stage, parameterized by resolution + search radius.
+# Warps two DEMs to a common grid (taken from <ref_ctx> proj+extent) at <res> m with
 # cubicspline, hillshades each with GDAL (-multidirectional -compute_edges -alt 15),
 # then parallel_stereo --correlator-mode (asp_mgm, corr-kernel 9 9, subpixel 9) ->
 # <out_dir>/run-F.tif (H/V/validity = the input-DEM -> ref-CTX disparity). This
@@ -10,25 +10,26 @@
 umask 022
 set -e
 in=${1:?in_dem}; ref=${2:?ref_ctx}; res=${3:?res}; S=${4:?corr_search}; out=${5:?out_dir}
-alt=${6:-15}   # OPTIONAL (shared script; other callers omit it). Default 15. My driver passes it explicitly.
+alt=${6:-15}   # optional (shared script; other callers omit it). default 15.
 # ASP/ISIS tools on PATH and environment are set up by the caller. See the README.
 mkdir -p $out
 echo "cassis_corr: in=$in ref=$ref res=$res search=$S out=$out"
-# --- Co-grid CTX + the CaSSIS DEM on ONE grid, CROPPED to the CaSSIS footprint (shared box). ---
-# The dd correlator is weak at sub-pixel, so gdalwarp (NOT the correlator) does the co-gridding, and
-# CTX (the "nice" grid) is NOT knocked off its lattice: crop CTX by an INTEGER pixel window
-# (gdal_translate -srcwin = no resample, stays on CTX's grid), then warp ONLY the CaSSIS DEM onto that
-# exact extent+size (-te + -ts). Requires ref (CTX) to be AT <res> (we pass the 18 m CTX at res 18).
-# FALLBACK to the old full-extent warp of both if ref res != <res>, the window is degenerate, or the
-# two outputs end up different sizes (a hard co-grid ASSERT: a size mismatch = an unphysical dd shift).
-# Use GDAL CLI (PBS python3 lacks osgeo). Strip gdalsrsinfo's leading blank line for -t_srs.
-# TODO(oalexan1): consider taking the grid, projection, and extent from the FIRST DEM (the
-# ASP-processed CaSSIS DEM) and conforming the CTX to it, instead of the reverse. The CaSSIS
-# DEM is the ASP product and is usually the grid we want to preserve. Not done now: in current
-# runs the CaSSIS DEM is already regridded onto the CTX, so this only matters if that changes.
-# IMPORTANT: whichever DEM defines proj/extent, the output must STILL honor the passed-in grid
-# resolution (<res>, normally 18 m). Respect the passed-in grid; never silently adopt a DEM's
-# own native pixel size. This should likely be CHECKED/asserted explicitly.
+# Co-grid CTX + the CaSSIS DEM on one grid, cropped to the CaSSIS footprint (shared box).
+# The dd correlator is weak at sub-pixel, so gdalwarp (not the correlator) does the
+# co-gridding, and CTX (the "nice" grid) is not knocked off its lattice: crop CTX by
+# an integer pixel window (gdal_translate -srcwin = no resample, stays on CTX's grid),
+# then warp only the CaSSIS DEM onto that exact extent+size (-te + -ts). Requires ref
+# (CTX) to be at <res> (we pass the 18 m CTX at res 18). FALLBACK to the old full-extent
+# warp of both if ref res != <res>, the window is degenerate, or the two outputs end up
+# different sizes (a hard co-grid assert: a size mismatch = an unphysical dd shift).
+# Use GDAL CLI (PBS python3 lacks osgeo); strip gdalsrsinfo's blank line for -t_srs.
+# TODO(oalexan1): consider taking the grid, projection, and extent from the first DEM
+# (the ASP-processed CaSSIS DEM) and conforming the CTX to it, instead of the reverse.
+# The CaSSIS DEM is the ASP product and is usually the grid we want to preserve. Not
+# done now: in current runs the CaSSIS DEM is already regridded onto the CTX, so this
+# only matters if that changes. Whichever DEM defines proj/extent, the output must
+# still honor the passed-in grid resolution (<res>, normally 18 m); never silently
+# adopt a DEM's own native pixel size. This should likely be checked explicitly.
 gdalsrsinfo -o wkt "$ref" | sed '/^[[:space:]]*$/d' > $out/_srs.wkt
 do_fullwarp(){
   local TE
@@ -57,7 +58,8 @@ else
   CTE=$(gdalinfo $out/ctx_${res}m.tif | awk '/Upper Left/{gsub(/[(),]/," ");ulx=$3;uly=$4}/Lower Right/{gsub(/[(),]/," ");lrx=$3;lry=$4}END{print ulx,lry,lrx,uly}')
   gdalwarp -overwrite -t_srs $out/_srs.wkt -te $CTE -ts $XS $YS -r cubicspline "$in" $out/warped_${res}m.tif >/dev/null || true
 fi
-# ASSERT identical grid size (else the dd carries an unphysical framing shift -> fall back to full warp).
+# Assert identical grid size (else the dd carries an unphysical framing shift ->
+# fall back to full warp).
 WS=$(gdalinfo $out/warped_${res}m.tif 2>/dev/null | awk '/^Size is/{gsub(/,/," ");print $3"x"$4}')
 CS2=$(gdalinfo $out/ctx_${res}m.tif   2>/dev/null | awk '/^Size is/{gsub(/,/," ");print $3"x"$4}')
 if [ -z "$WS" ] || [ "$WS" != "$CS2" ]; then
@@ -66,20 +68,20 @@ fi
 gdaldem hillshade -multidirectional -compute_edges -alt $alt $out/warped_${res}m.tif $out/warped_hill.tif > /dev/null
 gdaldem hillshade -multidirectional -compute_edges -alt $alt $out/ctx_${res}m.tif    $out/ctx_hill.tif    > /dev/null
 parallel_stereo --correlator-mode --stereo-algorithm asp_mgm \
-  --corr-kernel 9 9 --ip-per-image 40000 --subpixel-mode 9 \
-  --corr-search -$S -$S $S $S --processes 8 \
-  $out/warped_hill.tif $out/ctx_hill.tif \
-  --num-matches-from-disparity 40000 \
+  --corr-kernel 9 9 --ip-per-image 40000 --subpixel-mode 9   \
+  --corr-search -$S -$S $S $S --processes 8                  \
+  $out/warped_hill.tif $out/ctx_hill.tif                     \
+  --num-matches-from-disparity 40000                         \
   $out/run > $out/corr.log 2>&1
 echo "CORR_DONE -> $out/run-F.tif"
 
-# --- RAW disparity bands for ANALYSIS (dd-H = across-track, dd-V = along-track) ---
-# CRITICAL: NEVER analyze run-F.tif with gdalinfo/gdal_translate. Its band 3 is a VALIDITY
-# MASK that generic GDAL ignores, so invalid (uncorrelated) pixels read as 0 and pollute the
-# dd-H/dd-V stats - a mostly-invalid flat scene then looks like ~0 shift, hiding the real one.
-# disparitydebug --raw writes Float32 H/V with real nodata (-1e6). ALWAYS stat THESE two files,
-# never run-F.tif. disparitydebug needs ISIS initialized (ISISROOT set), which the
-# caller's environment provides (see the README).
+# Raw disparity bands for analysis (dd-H = across-track, dd-V = along-track).
+# Never analyze run-F.tif with gdalinfo/gdal_translate. Its band 3 is a validity mask
+# that generic GDAL ignores, so invalid (uncorrelated) pixels read as 0 and pollute the
+# dd-H/dd-V stats: a mostly-invalid flat scene then looks like ~0 shift, hiding the real
+# one. disparitydebug --raw writes Float32 H/V with real nodata (-1e6). Always stat those
+# two files, never run-F.tif. disparitydebug needs ISIS initialized (ISISROOT set), which
+# the caller's environment provides (see the README).
 if disparitydebug --raw $out/run-F.tif --output-prefix $out/run-F > $out/disparitydebug.log 2>&1; then
   echo "DISP_BANDS -> $out/run-F-H.tif (dd-H), $out/run-F-V.tif (dd-V)  [analyze THESE, not run-F.tif]"
 else

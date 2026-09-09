@@ -1,12 +1,12 @@
 #!/bin/bash
 # cassis_linescan_dem.sh - linescan DEM + sparse align to a coarse CTX DEM.
-# From the framelet cubes: assemble a continuous LINESCAN strip per look, tie L+R with
-# bundle_adjust (inline), stereo, point2dem, then a SPARSE pc_align (hillshade initial
-# transform, rigid, max-disp -1, num-iter 0) to the coarse CTX, and regrid the aligned DEM
-# onto the coarse grid.
+# From the framelet cubes: assemble a continuous linescan strip per look, tie L+R with
+# bundle_adjust (inline), stereo, point2dem, then a sparse pc_align (hillshade initial
+# transform, rigid, max-disp -1, num-iter 0) to the coarse CTX, and regrid the aligned
+# DEM onto the coarse grid.
 #
-# ALL COARSE: the coarse CTX is the ONLY geometry source - its proj, grid size, tr and
-# extent drive every output (seed, point2dem, align ref, regrid target). Nothing about
+# All coarse: the coarse CTX is the only geometry source (its proj, grid size, tr and
+# extent drive every output: seed, point2dem, align ref, regrid target). Nothing about
 # grid/proj is hardcoded; grid + proj always agree because they come from one file.
 #
 # Usage: cassis_linescan_dem.sh <site.conf> <outDir> <workdir>
@@ -45,7 +45,7 @@ log=$B/output_linescan_${site}.txt
 exec > "$log" 2>&1
 echo "START $(date) host=$(uname -n) site=$site"
 
-# --- grid + proj: SINGLE source of truth = the coarse CTX (agreement guaranteed) ---
+# grid + proj: single source of truth = the coarse CTX (agreement guaranteed)
 srs=$(gdalsrsinfo -o proj4 "$coarse" | tr -d '\n' | sed 's/^ *//; s/ *$//')
 GI=$(gdalinfo "$coarse")
 NX=$(echo "$GI" | awk -F'[ ,]+' '/^Size is/{print $3}')
@@ -61,58 +61,58 @@ echo "grid: tr=$TR size=${NX}x${NY} te='$XMIN $YMIN $XMAX $YMAX'"
 MAPCAP=${MAPCAP:-"--processes 2 --threads 3"}
 PSCAP=${PSCAP:-"--processes 2 --threads-multiprocess 3 --threads-singleprocess 6"}
 
-# --- S1-S2: strips + linescan ISDs (regen if missing; needs raw framelets present) ---
+# S1-S2: strips + linescan ISDs (regen if missing; needs raw framelets present)
 Ls=$work/${sidL}_strip.tif; Rs=$work/${sidR}_strip.tif
 Lisd=$work/${sidL}_linescan.json; Risd=$work/${sidR}_linescan.json
 if [ ! -s "$Ls" ] || [ ! -s "$Rs" ] || [ ! -s "$Lisd" ] || [ ! -s "$Risd" ]; then
-  echo "=== S1 stack_strip_gen (strips, sub-pixel pitch) ==="
+  echo "S1 stack_strip_gen (strips, sub-pixel pitch)"
   [ -n "$(cassis_look_cubs "$inputCassisDir" "$sidL")" ] || { echo "ERROR no framelet cubs for look $sidL under $inputCassisDir"; exit 1; }
   python3 "$BIN/stack_strip_gen.py" "$dataDir" "$sidL" "$sidR" "$work" | tee "$work/strip_gen.txt"
   for sid in "$sidL" "$sidR"; do
     line=$(grep "^${sid}:" "$work/strip_gen.txt")
     rev=$(echo "$line" | grep -q REVERSE && echo 1 || echo 0)
     keep=$(echo "$line" | sed -n 's/.*KEEP=\([0-9]*\).*/\1/p')
-    echo "=== S1b assemble_pushframe sid=$sid reverse=$rev keep=$keep ==="
+    echo "S1b assemble_pushframe sid=$sid reverse=$rev keep=$keep"
     python3 "$BIN/assemble_pushframe_gen.py" "$dataDir" "$sid" "$rev" "$keep" "$work/${sid}_pushframe.json"
-    echo "=== S2 pushframe2linescan sid=$sid ==="
+    echo "S2 pushframe2linescan sid=$sid"
     python3 "$BIN/pushframe2linescan.py" "$work/${sid}_pushframe.json" "$work/${sid}_linescan.json"
   done
 fi
 for f in "$Ls" "$Rs" "$Lisd" "$Risd"; do [ -s "$f" ] || { echo "ERROR missing $f"; exit 1; }; done
 
 out=$work/linescan_dem; mkdir -p "$out/ba" "$out/stereo" "$out/align"
-seed=$coarse                                    # all coarse: seed = coarse ctx
+seed=$coarse   # all coarse: seed = coarse ctx
 
-# --- S3: BA tie (L+R linescan, inline) ---
+# S3: BA tie (L+R linescan, inline)
 bap=$out/ba/run
 Lc=$bap-$(basename ${Lisd%.json}).adjusted_state.json
 Rc=$bap-$(basename ${Risd%.json}).adjusted_state.json
 if [ -s "$Lc" ] && [ -s "$Rc" ]; then
-  echo "=== S3 BA states present, skip ==="
+  echo "S3 BA states present, skip"
 else
-  echo "=== S3 bundle_adjust --inline-adjustments (tie L+R linescan) ==="
+  echo "S3 bundle_adjust --inline-adjustments (tie L+R linescan)"
   bundle_adjust "$Ls" "$Rs" "$Lisd" "$Risd" --inline-adjustments --datum D_MARS \
-    --ip-detect-method 1 --ip-per-image 50000 --threads 6 \
-    --remove-outliers-params "75 100 50 50" \
-    --num-iterations 100 --robust-threshold 2 \
+    --ip-detect-method 1 --ip-per-image 50000 --threads 6                       \
+    --remove-outliers-params "75 100 50 50"                                     \
+    --num-iterations 100 --robust-threshold 2                                   \
     -o "$bap" > "$out/ba_log.txt" 2>&1 || { echo "BA FAILED"; tail -25 "$out/ba_log.txt"; exit 1; }
   grep -iE "convergence angle|filtered interest" "$out/ba_log.txt" | head
 fi
 
-# --- S4: stereo WITHOUT mapproject (correlate at NATIVE res) + point2dem at native ---
+# S4: stereo without mapproject (correlate at native res) + point2dem at native.
 # Mapprojecting at the coarse 18 m grid destroyed the ~4.59 m native CaSSIS detail and
-# made the DEM rough. Correlate the raw strips directly (BA-tied cams, affineepipolar) so
-# correlation runs at native res, and point2dem at NATIVE (auto-tr, ~4.59 m) so the DEM
-# matches the prior 4.59 m products. proj comes from the coarse ctx (the coarse only
-# dictates PROJ + the alignment target, NEVER the correlation/output res).
-echo "=== S4 stereo (NO mapproject, native correlation) + point2dem native ==="
+# made the DEM rough. Correlate the raw strips directly (BA-tied cams, affineepipolar)
+# so correlation runs at native res, and point2dem at native (auto-tr, ~4.59 m) so the
+# DEM matches the prior 4.59 m products. proj comes from the coarse ctx (the coarse
+# only dictates proj + the alignment target, never the correlation/output res).
+echo "S4 stereo (NO mapproject, native correlation) + point2dem native"
 if [ -s "$out/stereo/run-PC.tif" ]; then
   echo "S4 PC present, skip stereo"
 else
   parallel_stereo $PSCAP --alignment-method affineepipolar --stereo-algorithm asp_mgm \
     --subpixel-mode 9 --subpixel-kernel 7 7 --rm-half-kernel 0 0 --edge-buffer-size 0 \
     --rm-cleanup-passes 0 --erode-max-size 0 --corr-seed-mode 1 --sgm-collar-size 256 \
-    "$Ls" "$Rs" "$Lc" "$Rc" "$out/stereo/run" \
+    "$Ls" "$Rs" "$Lc" "$Rc" "$out/stereo/run"                                         \
     > "$out/stereo_log.txt" 2>&1 || { echo "STEREO FAILED"; tail -30 "$out/stereo_log.txt"; exit 1; }
 fi
 point2dem --errorimage --t_srs "$srs" "$out/stereo/run-PC.tif" -o "$out/stereo/dem" \
@@ -120,27 +120,32 @@ point2dem --errorimage --t_srs "$srs" "$out/stereo/run-PC.tif" -o "$out/stereo/d
 dem=$out/stereo/dem-DEM.tif
 echo "DEM after BA+stereo (native res): $dem"; ls -la "$dem"
 
-# --- S5: sparse hillshade-init alignment to the coarse CTX ---
-# Align the linescan stereo DEM to the coarse CTX with SPARSE interest points matched between the two
-# hillshades: pc_align --initial-transform-from-hillshading rigid (RANSAC-filtered), no dense
-# correlation and no match file. This is reliable ONLY because both DEMs are first put on the SAME
-# coarse CTX grid (demc, below) before matching. The old failure of hillshade-init alone ("not enough
-# valid matches" -> a degenerate scale + thousands-of-km transform that threw the cameras below the
-# surface) came entirely from a hillshade SCALE MISMATCH (CTX ~18-20 m vs CaSSIS native ~4.6 m).
-# Putting both on one grid removes that, and sparse IP then locks crater-on-crater. Dense correlation
-# of the hillshades was the earlier workaround, but it has its own failure: on low-texture terrain it
-# locks onto the featureless plains and leaves a 6-20 px residual, so sparse-IP is preferred. The CTX
-# is windowed to the linescan footprint + a 10% margin (0 is tightest on texture-rich scenes but
-# starves low-texture ones; 10% is the uniform value that serves both). Call 2 (below) applies the
-# resulting transform to the point cloud. Judge the result by a red/green hillshade overlay, not dh/dv.
-echo "=== S5 sparse hillshade-init align: pc_align --initial-transform-from-hillshading rigid ==="
+# S5: sparse hillshade-init alignment to the coarse CTX.
+# Align the linescan stereo DEM to the coarse CTX with sparse interest points matched
+# between the two hillshades: pc_align --initial-transform-from-hillshading rigid
+# (RANSAC-filtered), no dense correlation and no match file. This is reliable only
+# because both DEMs are first put on the same coarse CTX grid (demc, below) before
+# matching. The old failure of hillshade-init alone ("not enough valid matches" -> a
+# degenerate scale + thousands-of-km transform that threw the cameras below the
+# surface) came entirely from a hillshade scale mismatch (CTX ~18-20 m vs CaSSIS
+# native ~4.6 m). Putting both on one grid removes that, and sparse IP then locks
+# crater-on-crater. Dense correlation of the hillshades was the earlier workaround, but
+# it has its own failure: on low-texture terrain it locks onto the featureless plains
+# and leaves a 6-20 px residual, so sparse-IP is preferred. The CTX is windowed to the
+# linescan footprint + a 10% margin (0 is tightest on texture-rich scenes but starves
+# low-texture ones; 10% is the uniform value that serves both). Call 2 (below) applies
+# the resulting transform to the point cloud. Judge the result by a red/green hillshade
+# overlay, not dh/dv.
+echo "S5 sparse hillshade-init align: pc_align --initial-transform-from-hillshading rigid"
 al=$out/align; mkdir -p "$al"
-# 1. put the native linescan DEM on the coarse CTX grid (same proj/extent/res) so hillshades match
+# 1. put the native linescan DEM on the coarse CTX grid (same proj/extent/res) so
+#    hillshades match
 demc=$al/ls_oncoarsegrid.tif
 gdalwarp -q -overwrite -t_srs "$srs" -te $XMIN $YMIN $XMAX $YMAX -ts $NX $NY -r cubicspline \
   "$dem" "$demc" > "$out/align_warp_src.txt" 2>&1
-# WINDOW coarse+demc to the linescan footprint + 10% margin BEFORE matching, so the sparse IP
-# cannot lock onto a FAR spurious match on low-texture plains (a km-scale spurious-shift bug).
+# Window coarse+demc to the linescan footprint + 10% margin before matching, so the
+# sparse IP cannot lock onto a far spurious match on low-texture plains (a km-scale
+# spurious-shift bug).
 read WX0 WY0 WX1 WY1 < <(python3 -c "
 from osgeo import gdal; import numpy as np
 d=gdal.Open('$demc'); b=d.GetRasterBand(1); nd=b.GetNoDataValue(); a=b.ReadAsArray()
@@ -152,12 +157,14 @@ cwin=$al/ctx_win.tif; dwin=$al/dem_win.tif
 gdalwarp -q -overwrite -te $WX0 $WY0 $WX1 $WY1 -r cubicspline "$coarse" "$cwin" >/dev/null 2>&1
 gdalwarp -q -overwrite -te $WX0 $WY0 $WX1 $WY1 -r cubicspline "$demc"   "$dwin" >/dev/null 2>&1
 echo "  WINDOWED CTX to linescan footprint: $WX0 $WY0 $WX1 $WY1"
-# ============================ ALIGN TOOLBOX (fall-through, corr-eval gated) ============================
-# The align is a TOOLBOX: run a method, verify it with the corr-eval, and if it fails, fall through to the
-# next method. Two helpers keep it DRY (no duplicated apply/eval code). run-transform.txt is always the
-# cassis->ctx transform (pc_align ctx=ref cassis=source), the direction stage 2 (cassis_align_cams.sh) needs.
+# align toolbox (fall-through, corr-eval gated)
+# The align is a toolbox: run a method, verify it with the corr-eval, and if it fails,
+# fall through to the next method. Two helpers avoid duplicated apply/eval code.
+# run-transform.txt is always the cassis->ctx transform (pc_align ctx=ref
+# cassis=source), the direction stage 2 (cassis_align_cams.sh) needs.
 
-# helper: apply $al/run-transform.txt to the stereo PC -> native + coarse-grid aligned DEMs (+ error image)
+# helper: apply $al/run-transform.txt to the stereo PC -> native + coarse-grid aligned
+# DEMs (+ error image)
 apply_and_regrid() {
   pc_align --max-displacement -1 --num-iterations 0 --initial-transform "$al/run-transform.txt" \
     --save-transformed-source-points "$coarse" "$out/stereo/run-PC.tif" -o "$al/applied" \
@@ -170,9 +177,10 @@ apply_and_regrid() {
     -ts $NX $NY -r cubicspline "$al/aligned-IntersectionErr.tif" "$al/aligned_oncoarse_err.tif" \
     > "$out/align_warp_err.txt" 2>&1
 }
-# helper: window the aligned DEM to the cwin grid, hillshade, write the red/green overlay (the eyeball judge),
-# and correlate (asp_mgm, tight -25..25) for a robust-median residual dh/dv -> sets GDH GDV. set +e so a guard
-# sub-command can never abort a good align. The tight eval is stable even on smooth terrain (verified oxia1).
+# helper: window the aligned DEM to the cwin grid, hillshade, write the red/green
+# overlay (the eyeball judge), and correlate (asp_mgm, tight -25..25) for a robust-
+# median residual dh/dv -> sets GDH GDV. set +e so a guard sub-command can never abort
+# a good align. The tight eval is stable even on smooth terrain (verified oxia1).
 eval_and_overlay() {
   set +e
   awin=$al/aligned_win.tif
@@ -211,11 +219,11 @@ print(f"{md(sys.argv[1]):.2f} {md(sys.argv[2]):.2f}")
 PYG
 )
 }
-# helper: is the current residual a PASS? |median| <= 10 px for BOTH dh and dv.
+# helper: is the current residual a pass? |median| <= 10 px for both dh and dv.
 align_ok() { awk -v h="${GDH:-999}" -v v="${GDV:-999}" 'BEGIN{h=(h<0?-h:h);v=(v<0?-v:v);exit (h>10||v>10)?1:0}'; }
 
-# ---- METHOD 1 (default): sparse hillshade-init, rigid (no scale). Works on textured sites. ----
-echo "=== S5 METHOD 1: sparse hillshade-init (pc_align --initial-transform-from-hillshading rigid) ==="
+# method 1 (default): sparse hillshade-init, rigid (no scale). Works on textured sites.
+echo "S5 METHOD 1: sparse hillshade-init (pc_align --initial-transform-from-hillshading rigid)"
 pc_align --max-displacement -1 --num-iterations 0 --max-num-reference-points 1000000 \
   --initial-transform-from-hillshading rigid --initial-transform-ransac-params 1000 3 \
   --save-transformed-source-points "$cwin" "$dwin" -o "$al/run" > "$out/align_log.txt" 2>&1 \
@@ -225,15 +233,18 @@ GDH=999; GDV=999; method="sparse-IP"
 [ -s "$al/run-transform.txt" ] && { apply_and_regrid; eval_and_overlay; }
 echo "  method 1 (sparse-IP) residual dh/dv median = ${GDH} / ${GDV} px"
 
-# ---- METHOD 2 (fall-through): asp_bm dense correlation + NED translation. Triggered only if method 1 fails. ----
-# For low-texture sites (oxia1) sparse IP finds too few inliers -> a spurious transform, and the true shift is
-# large (oxia1 ~164 px). asp_bm BLOCK MATCHING gives a CONSISTENT dense disparity where asp_mgm plains-locks;
-# we take its robust MEDIAN disparity as a pure TRANSLATION (horizontal), recover the vertical with one
-# translation-only ICP pass, and apply both as a num-iterations-0 --initial-ned-translation (no ICP drift).
+# method 2 (fall-through): asp_bm dense correlation + NED translation. Triggered only
+# if method 1 fails. For low-texture sites (oxia1) sparse IP finds too few inliers -> a
+# spurious transform, and the true shift is large (oxia1 ~164 px). asp_bm block
+# matching gives a consistent dense disparity where asp_mgm plains-locks; we take its
+# robust median disparity as a pure translation (horizontal), recover the vertical with
+# one translation-only ICP pass, and apply both as a num-iterations-0
+# --initial-ned-translation (no ICP drift).
 if ! align_ok; then
-  echo "=== S5 METHOD 1 failed the corr-eval -> METHOD 2: asp_bm dense correlation + NED translation ==="
+  echo "S5 METHOD 1 failed the corr-eval -> METHOD 2: asp_bm dense correlation + NED translation"
   m2=$al/m2; mkdir -p "$m2"
-  # a bigger window so a large low-texture shift is reachable (CTX fills what it has; nodata beyond is fine)
+  # a bigger window so a large low-texture shift is reachable (CTX fills what it has;
+  # nodata beyond is fine)
   read BX0 BY0 BX1 BY1 < <(python3 -c "print($WX0-4000,$WY0-4000,$WX1+4000,$WY1+4000)")
   cwin2=$m2/ctx_win.tif; dwin2=$m2/dem_win.tif
   gdalwarp -q -overwrite -te $BX0 $BY0 $BX1 $BY1 -tr $TR $TR -r cubicspline "$coarse" "$cwin2" >/dev/null 2>&1
@@ -258,7 +269,8 @@ PYM
 )
   Nn=$(python3 -c "print(-1.0*($MDV)*$TR)"); Ee=$(python3 -c "print(($MDH)*$TR)")
   echo "  asp_bm median disparity dh=$MDH dv=$MDV px -> horizontal NED  N=$Nn  E=$Ee (m)"
-  # translation-only ICP to recover the vertical (its horizontal drifts on plains, so we discard that)
+  # translation-only ICP to recover the vertical (its horizontal drifts on plains, so we
+  # discard that)
   pc_align --max-displacement -1 --num-iterations 40 --compute-translation-only \
     --initial-ned-translation "$Nn $Ee 0" --max-num-reference-points 2000000 \
     "$cwin2" "$dwin2" -o "$m2/icp" > "$out/align_m2icp.txt" 2>&1
@@ -270,7 +282,8 @@ try:
     print(m[-1].split(',')[2].strip() if m else '0')
 except Exception: print('0')")
   echo "  ICP vertical Down=$Dd m"
-  # final transform: pure translation (asp_bm horizontal + ICP vertical), num-iter 0 -> run-transform.txt
+  # final transform: pure translation (asp_bm horizontal + ICP vertical), num-iter 0 ->
+  # run-transform.txt
   pc_align --max-displacement -1 --num-iterations 0 --initial-ned-translation "$Nn $Ee $Dd" \
     --save-transformed-source-points "$cwin2" "$dwin2" -o "$al/run" > "$out/align_m2final.txt" 2>&1
   method="asp_bm-dense"
@@ -278,12 +291,12 @@ except Exception: print('0')")
   echo "  method 2 (asp_bm-dense) residual dh/dv median = ${GDH} / ${GDV} px"
 fi
 
-# ---- report + final catch ----
+# report + final catch
 if [ -s "$al/aligned_oncoarse.tif" ]; then
   echo "ALIGNED DEM (native): $al/aligned-DEM.tif ; on coarse grid: $al/aligned_oncoarse.tif"
   echo "  ALIGN METHOD USED: $method ; final residual dh/dv median = ${GDH} / ${GDV} px"
   echo "  RED/GREEN OVERLAY (the align judge): $al/align_overlay.tif (R=CTX G=aligned, yellow=registered)"
-  align_ok || echo "  *** WARNING: linescan->CTX ALIGNMENT residual dh/dv median > 10 px after all methods. Inspect $al/align_overlay.tif (R=CTX, G=aligned) by eye. ***"
+  align_ok || echo "  WARNING: linescan->CTX ALIGNMENT residual dh/dv median > 10 px after all methods. Inspect $al/align_overlay.tif (R=CTX, G=aligned) by eye."
 else
   echo "NO aligned DEM produced - all align methods failed (see $out/align_*.txt)"
 fi

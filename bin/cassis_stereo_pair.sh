@@ -1,12 +1,16 @@
 #!/bin/bash
-# cassis_stereo_pair.sh - ONE per-pair stereo unit, invoked by GNU parallel from the cassis_stereo.sh
-# driver. Sources an env file (the fixed params the driver wrote) and does one pair in one of 3 modes:
-#   dem  = mapprojected stereo (geounc=0) + point2dem  (DEM mode; pairs come from existing match files)
-#   lr   = mapprojected stereo (geounc collar) + --num-matches-from-disparity + copy match  (dense L-R)
-#   same = raw affineepipolar stereo + --num-matches-from-disparity + copy match  (dense same-look L-L/R-R)
-# Args: <mode> <a> <b> <envfile>. The env file sets: out geounc mapprojDem nmd PROJ demRes matchPrefix
-#   imgList camList T. This worker sets its own ASP env and caps per-worker threads so a pool of them
-#   does not oversubscribe the node.
+# cassis_stereo_pair.sh - one per-pair stereo unit, invoked by GNU parallel from the
+# cassis_stereo.sh driver. Sources an env file (the fixed params the driver wrote) and
+# does one pair in one of 3 modes:
+#   dem  = mapprojected stereo (geounc=0) + point2dem (DEM mode; pairs from existing
+#          match files)
+#   lr   = mapprojected stereo (geounc collar) + --num-matches-from-disparity + copy
+#          match (dense L-R)
+#   same = raw affineepipolar stereo + --num-matches-from-disparity + copy match
+#          (dense same-look L-L/R-R)
+# Args: <mode> <a> <b> <envfile>. The env file sets: out geounc mapprojDem nmd PROJ
+#   demRes matchPrefix imgList camList T. This worker sets its own ASP env and caps
+#   per-worker threads so a pool of them does not oversubscribe the node.
 set +e
 mode=${1:?mode (dem|lr|same)}; a=${2:?a}; b=${3:?b}; envf=${4:?envfile}
 [ -s "$envf" ] || { echo "  PAIR $a $b: no envfile $envf"; exit 0; }
@@ -14,8 +18,9 @@ mode=${1:?mode (dem|lr|same)}; a=${2:?a}; b=${3:?b}; envf=${4:?envfile}
 # parallel carries the environment to each worker). See the README.
 source "$envf"
 T=${T:-2}
-# cap math-library threads per worker (imitate parallel_stereo's MKL guard) so K workers x T threads
-# do not oversubscribe; parallel_stereo itself gets T via its own flags below.
+# cap math-library threads per worker (imitate parallel_stereo's MKL guard) so K
+# workers x T threads do not oversubscribe; parallel_stereo itself gets T via its own
+# flags below.
 export OMP_NUM_THREADS=$T MKL_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 VECLIB_MAXIMUM_THREADS=1
 
 # resolve the BA/refit camera + image (cub) for a stem from the 1-1 lists
@@ -39,10 +44,10 @@ case "$mode" in
       --ip-match-radius 20 \
       "$out/maps/$a.tif" "$out/maps/$b.tif" "$ca" "$cb" "$od/run" "$mapprojDem" > "$od.log" 2>&1 \
       || { echo "  STEREO FAIL $a $b"; exit 0; }
-    point2dem --errorimage \
+    point2dem --errorimage              \
       --max-valid-triangulation-error 8 \
-      --t_srs "$PROJ" \
-      --tr $demRes \
+      --t_srs "$PROJ"                   \
+      --tr $demRes                      \
       "$od/run-PC.tif" -o "$od/dem" >> "$od.log" 2>&1 || echo "  p2d FAIL $a $b"
     ;;
   lr)
