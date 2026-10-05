@@ -264,15 +264,19 @@ fi
 # default cores/T), to avoid oversubscribing a workstation.
 [ -n "$CASSIS_MAX_JOBS" ] && case "$CASSIS_MAX_JOBS" in ''|*[!0-9]*) : ;; *) [ "$CASSIS_MAX_JOBS" -lt "$K" ] && K=$CASSIS_MAX_JOBS ;; esac
 blunderTolM=${blunderTolM:-500}
-ovl=$out/overlap.txt;         : > "$ovl"
-imgList=$out/image_list.txt;  : > "$imgList"
-camList=$out/camera_list.txt; : > "$camList"
+ovl=$out/overlap.txt;           : > "$ovl"
+# multi_stereo's own image/camera lists (the mapprojected pairs). Use NAMES DISTINCT from
+# the input imgList/camList (args 3-4): cam_of() resolves cameras through those input
+# lists in the loop below, so reusing the names here would clobber the lookup and leave
+# the overlap list empty ("no overlap-list rows built").
+msImgList=$out/image_list.txt;  : > "$msImgList"
+msCamList=$out/camera_list.txt; : > "$msCamList"
 
 declare -A seen_img
-add_cam() {  # record image $1 with camera $2 once, into the parallel lists
+add_cam() {  # record image $1 with camera $2 once, into the multi_stereo lists
   [ -n "${seen_img[$1]:-}" ] && return
-  echo "$1" >> "$imgList"
-  echo "$2" >> "$camList"
+  echo "$1" >> "$msImgList"
+  echo "$2" >> "$msCamList"
   seen_img[$1]=1
 }
 
@@ -297,8 +301,8 @@ demOpts="--tr $demRes --errorimage --max-valid-triangulation-error 8"
 
 multi_stereo                        \
   --mode dem_mosaic                 \
-  --image-list "$imgList"           \
-  --camera-list "$camList"          \
+  --image-list "$msImgList"         \
+  --camera-list "$msCamList"        \
   --overlap-list "$ovl"             \
   --dem "$mapprojDem"               \
   --output-prefix "$out/dem_mosaic" \
