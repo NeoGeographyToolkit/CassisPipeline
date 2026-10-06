@@ -53,14 +53,26 @@ case "$mode" in
   lr)
     [ -s "$mf" ] && exit 0
     [ -s "$out/maps/$a.tif" ] && [ -s "$out/maps/$b.tif" ] && [ -s "$ca" ] && [ -s "$cb" ] || { echo "  skip lr $a $b (no ortho/cam)"; exit 0; }
-    rm -rf "$od"; mkdir -p "$od"
-    parallel_stereo --processes 1 --threads-multiprocess $T --threads-singleprocess $T \
-      --alignment-method none --stereo-algorithm asp_mgm --subpixel-mode 9 --corr-seed-mode 1 \
-      --mapproj-geolocation-uncertainty $geounc \
-      --num-matches-from-disparity $nmd --max-disp-spread 120 \
-      "$out/maps/$a.tif" "$out/maps/$b.tif" "$ca" "$cb" "$od/run" "$mapprojDem" > "$od.log" 2>&1 \
-      || { echo "  LR FAIL $a $b"; exit 0; }
-    m=$(ls $od/run-disp-*.match 2>/dev/null | head -1); [ -n "$m" ] && cp -f "$m" "$mf" || echo "  NO MATCH lr $a $b"
+    # Dense cross-look match in the mapprojected domain. Try --corr-seed-mode 1 (the fast
+    # pyramid seed) first. On thin-overlap pairs its low-resolution D_sub can come back empty
+    # ("No tiles were generated"), producing no match. Fall back to --corr-seed-mode 0 (a
+    # direct full search in the interest-point search window), which recovers those marginal
+    # pairs. The seed mode is the only difference between the two attempts.
+    lr_try() {  # $1 = corr-seed-mode; echoes the produced dense match file (empty if none)
+      rm -rf "$od"; mkdir -p "$od"
+      parallel_stereo --processes 1 --threads-multiprocess $T --threads-singleprocess $T \
+        --alignment-method none --stereo-algorithm asp_mgm --subpixel-mode 9 --corr-seed-mode "$1" \
+        --mapproj-geolocation-uncertainty $geounc \
+        --num-matches-from-disparity $nmd --max-disp-spread 120 \
+        "$out/maps/$a.tif" "$out/maps/$b.tif" "$ca" "$cb" "$od/run" "$mapprojDem" > "$od.log" 2>&1
+      ls "$od"/run-disp-*.match 2>/dev/null | head -1
+    }
+    m=$(lr_try 1)
+    if [ -z "$m" ]; then
+      echo "  lr $a $b: --corr-seed-mode 1 produced no match (thin-overlap empty disparity); retrying with --corr-seed-mode 0"
+      m=$(lr_try 0)
+    fi
+    [ -n "$m" ] && cp -f "$m" "$mf" || echo "  NO MATCH lr $a $b (--corr-seed-mode 1 and 0 both failed)"
     ;;
   same)
     [ -s "$mf" ] && exit 0
