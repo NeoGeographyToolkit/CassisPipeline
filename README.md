@@ -237,14 +237,16 @@ is nothing to change.
 ### Running
 
 With the Tier 1 inputs in place (cubs, cameras, *refDem*, *mapprojDem*), the
-master script runs the whole processing chain, stages 1 through 8:
+master script runs the standard processing chain, stages 1 through 7, which produce
+the delivered DEM:
 
 ```bash
-cassis_process.sh cassis_siteName.conf 1 8 outDir /path/to/workdir
+cassis_process.sh cassis_siteName.conf 1 7 outDir /path/to/workdir
 ```
 
-The five arguments are the site config, the first and last stage to run (1 to 8),
-the output directory, and the work directory. All outputs go under outDir, which
+The five arguments are the site config, the first and last stage to run, the output
+directory, and the work directory. Stages 1 to 7 are the standard chain. Stage 8 is an
+optional refinement pass (see below). All outputs go under outDir, which
 can be any path and changes per run. Reuse an outDir to resume (each stage skips
 outputs that already exist); use a fresh outDir for a clean run. To run or inspect
 one stage at a time, set the same number for both, for example *1 1*, then *2 2*.
@@ -331,8 +333,8 @@ qsub -V -N cassis -l select=1:ncpus=28 -l walltime=6:00:00 -j oe -o cassis_qsub.
   cassis_jezero.conf 5 7 jezero_out $(pwd)
 ```
 
-This runs through pass 1, which is the delivered DEM. To also run the optional
-pass 2, set the last stage to 8 instead of 7.
+This runs stages 5 to 7, delivering the processed DEM. To also run the optional
+refinement pass, set the last stage to 8 instead of 7.
 
 The -V flag exports the activated environment (PATH, PROJ_DATA, ISISROOT, and
 the rest) to the compute node, which otherwise starts clean. The worker changes
@@ -356,11 +358,11 @@ The stages within this group are:
   Documented at [Optional refinement](https://stereopipeline.readthedocs.io/en/latest/examples/cassis.html#cassis-refine).
 
 The delivered DEM is *cassis_dem_on_ctx.tif*, under the output directory, in
-*outDir*/frame/pass2_stereo/ (or *pass1_stereo/* if pass 2 was not run). Beside
-it are its hillshade, the geodiff to CTX, and the max-triangulation-error mosaic.
-Compare the DEM to the
-CTX reference with geodiff for the vertical difference and by hillshade image
-correlation for the horizontal registration, as in
+*outDir*/frame/pass1_stereo/ (or *pass2_stereo/* if the optional refinement pass
+was run). Beside it are its hillshade, the geodiff to CTX, and the
+max-triangulation-error mosaic. Compare the DEM to the CTX reference with
+geodiff for the vertical difference and by hillshade image correlation for the
+horizontal registration, as in
 [Evaluation](https://stereopipeline.readthedocs.io/en/latest/examples/cassis.html#cassis-eval).
 
 ## Joint CTX and CaSSIS jitter solving

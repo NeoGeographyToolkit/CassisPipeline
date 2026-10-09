@@ -20,16 +20,17 @@
 #   4  refit lens -> transverse   refit_transverse.sh      -> registered_cassis_cams
 #   5  apply optimized distortion + refit pose (cam_gen loop)          -> startCamDir
 #   6  dense matches                                       -> matchpfx*.match
-#   7  pass1  (cassis_run.sh pass1)                        -> pass1 DEM
-#   8  pass2  (cassis_run.sh pass2)                        -> FINAL DEM
+#   7  pass1 (cassis_run.sh pass1)                         -> delivered DEM
+#   8  refinement pass (cassis_run.sh pass2)   OPTIONAL    -> refined DEM
 #
 # All inputs (cubs, cameras, refDem, mapprojDem) come from Tier 1 and are named in the
-# site config. The final delivered DEM = <outDir>/frame/pass2_stereo/cassis_dem.tif
-# (+ _on_ctx.tif).
+# site config. The delivered DEM = <outDir>/frame/pass1_stereo/cassis_dem.tif
+# (+ _on_ctx.tif). The optional refinement pass (stage 8) writes to pass2_stereo/ instead.
 #
 # Usage:  cassis_process.sh <site.conf> <fromStage> <toStage> <outDir> <B>
-#   e.g.  cassis_process.sh cassis_ox1.conf 1 8 ox1_out /path/to/workdir
-#   fromStage..toStage is the stage range to run (1..8). outDir is where all outputs go
+#   e.g.  cassis_process.sh cassis_ox1.conf 1 7 ox1_out /path/to/workdir
+#   fromStage..toStage is the stage range to run. Stages 1..7 are the standard chain and
+#   stage 8 is an optional refinement pass. outDir is where all outputs go
 #   (any path, relative to the workdir or absolute; changes per run). Reuse an existing
 #   outDir to resume (each stage skips if its output exists); use a fresh outDir for a
 #   clean run.
@@ -236,18 +237,18 @@ if want 7; then
   stage_done 7 "pass1" "$t"
 fi
 
-# stage 8: pass2 -> final DEM (heavy)
+# stage 8: optional refinement pass (heavy)
 if want 8; then
-  stage_hdr 8 "pass2 (FINAL)"; t=$(date +%s)
+  stage_hdr 8 "refinement pass (optional)"; t=$(date +%s)
   p2dem=$outDir/frame/pass2_stereo/cassis_dem.tif
-  if [ -s "$p2dem" ]; then echo "  pass2 DEM exists - skip ($p2dem)";
+  if [ -s "$p2dem" ]; then echo "  refined DEM exists - skip ($p2dem)";
   else
-    bash "$selfBin/cassis_run.sh" "$cfg" pass2 "$outDir" "$B" || { echo "STAGE8_FAIL pass2"; exit 1; }
+    bash "$selfBin/cassis_run.sh" "$cfg" pass2 "$outDir" "$B" || { echo "STAGE8_FAIL refinement pass"; exit 1; }
   fi
-  [ -s "$p2dem" ] || { echo "STAGE8_FAIL pass2 no DEM $p2dem"; exit 1; }
-  echo "  FINAL DEM: $p2dem"
-  echo "  FINAL DEM on_ctx: ${p2dem%.tif}_on_ctx.tif"
-  stage_done 8 "pass2" "$t"
+  [ -s "$p2dem" ] || { echo "STAGE8_FAIL refinement pass no DEM $p2dem"; exit 1; }
+  echo "  refined DEM: $p2dem"
+  echo "  refined DEM on_ctx: ${p2dem%.tif}_on_ctx.tif"
+  stage_done 8 "refinement pass" "$t"
 fi
 
 echo ""
