@@ -347,15 +347,13 @@ The stages within this group are:
 - Stage 6, compute dense interest-point matches (*cassis_stereo.sh*). If matches
   are absent, start the run at stage 6. Documented at
   [Dense matches](https://stereopipeline.readthedocs.io/en/latest/examples/cassis.html#cassis-dense-matches).
-- Stage 7, pass 1: bundle adjustment, pairwise stereo, blending, and registration
+- Stage 7: bundle adjustment, pairwise stereo, blending, and registration
   to CTX. The delivered DEM is this result. Documented at
   [Bundle adjustment](https://stereopipeline.readthedocs.io/en/latest/examples/cassis.html#cassis-ba)
   and
   [Pairwise stereo and blending](https://stereopipeline.readthedocs.io/en/latest/examples/cassis.html#cassis-stereo).
-- Stage 8, optional pass 2. It mainly re-ties the weakly constrained framelets at
-  the ends of each strip and gives limited extra payoff, so it is off by default.
-  Documented at
-  [Optional refinement](https://stereopipeline.readthedocs.io/en/latest/examples/cassis.html#cassis-refine).
+- Stage 8 (optional). It redoes the process with freshly generated cameras, DEM, and GCP from stage 7. It normally has a limited extra payoff.
+  Documented at [Optional refinement](https://stereopipeline.readthedocs.io/en/latest/examples/cassis.html#cassis-refine).
 
 The delivered DEM is *cassis_dem_on_ctx.tif*, under the output directory, in
 *outDir*/frame/pass2_stereo/ (or *pass1_stereo/* if pass 2 was not run). Beside
