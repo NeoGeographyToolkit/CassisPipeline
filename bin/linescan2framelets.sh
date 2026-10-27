@@ -12,6 +12,7 @@
 set -e
 umask 022
 # ASP/ISIS tools on PATH and the environment are set up by the caller. See the README.
+selfBin=$(cd "$(dirname "$0")" 2>/dev/null && pwd)
 cfg=${1:?usage: linescan2framelets.sh <site.conf> <outDir> <workdir>}
 outDir=${2:?outDir (output dir, relative to workdir or absolute)}
 B=${3:?workdir}
@@ -19,7 +20,7 @@ cd "$B" || { echo "ERROR cannot cd $B"; exit 1; }
 [ -s "$B/cassis_common.conf" ] && source "$B/cassis_common.conf"
 [ -s "$B/$cfg" ] || { echo "ERROR missing site config $cfg"; exit 1; }
 source "$B/$cfg"
-source cassis_env_check.sh
+source "$selfBin/cassis_env_check.sh"
 cassis_require bundle_adjust
 
 for entry in "L $Llook" "R $Rlook"; do
@@ -33,11 +34,24 @@ for entry in "L $Llook" "R $Rlook"; do
   [ -s "$state" ] || { echo "ERROR: missing aligned linescan state $state"; exit 1; }
   mkdir -p "$out"
 
-  # framelet cubes + ISDs, in framelet-index (=time) order
-  cubes=$(cassis_look_cubs "$inputCassisDir" "$sid")
+  # framelet cubes + ISDs, in framelet-index (=time) order (filter 0-pixel dropouts)
+  all_cubes=$(cassis_look_cubs "$inputCassisDir" "$sid")
+  cubes=$(python3 - "$all_cubes" <<'PY'
+import sys
+from osgeo import gdal
+import numpy as np
+gdal.DontUseExceptions()
+for c in sys.argv[1].split():
+    d = gdal.Open(c)
+    if d is not None:
+        a = d.GetRasterBand(1).ReadAsArray()
+        if np.any(a > -1e30):
+            print(c)
+PY
+)
   nc=$(echo "$cubes" | grep -c .)
   isds=$(for c in $cubes; do echo ${c%.cub}.json; done)
-  echo "[aligned_framelets $look $sid] $nc framelet cubes"
+  echo "[aligned_framelets $look $sid] $nc valid framelet cubes"
 
   echo "[aligned_framelets] 0-iter BA: framelet cubes -> raw frame CSM states"
   bundle_adjust $cubes $isds --inline-adjustments --num-iterations 0 \

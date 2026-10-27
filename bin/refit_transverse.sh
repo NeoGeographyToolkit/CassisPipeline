@@ -16,6 +16,7 @@
 set -e
 umask 022
 # ASP/ISIS tools on PATH and the environment are set up by the caller. See the README.
+selfBin=$(cd "$(dirname "$0")" 2>/dev/null && pwd)
 cfg=${1:?usage: refit_transverse.sh <site.conf> <outDir> <workdir>}
 outDir=${2:?outDir (output dir, relative to workdir or absolute)}
 B=${3:?workdir}
@@ -23,7 +24,7 @@ cd "$B" || { echo "ERROR cannot cd $B"; exit 1; }
 [ -s "$B/cassis_common.conf" ] && source "$B/cassis_common.conf"
 [ -s "$B/$cfg" ] || { echo "ERROR missing site config $cfg"; exit 1; }
 source "$B/$cfg"
-source cassis_env_check.sh
+source "$selfBin/cassis_env_check.sh"
 cassis_require cam_gen cam_test
 datum=${refitDatum:-D_MARS}
 out_dir=$outDir/frame/registered_cassis_cams
