@@ -146,6 +146,14 @@ img_of(){ awk -v n="$1" '{b=$0; sub(/.*\//,"",b); sub(/\.[^.]*$/,"",b); if(b==n)
 # parallel carries nothing itself; the worker sets its own ASP env and reads these).
 write_pair_env(){
   local T=${1:-2}
+  # Per-look framelet_order_reversed (from the stitch's pushframe ISD, written by stage 1).
+  # The same-look crop-window overlap-end rule keys on it: reversed=1 -> lower-index framelet
+  # overlaps at its TOP, reversed=0 -> at its BOTTOM (higher-index the opposite). Sentinel -1
+  # (ISD absent) tells the worker to fall back to trying both ends. The two looks are always
+  # opposite (the 180-deg-rotated pair), but we read each independently rather than assume.
+  local revL revR
+  revL=$(python3 -c "import json,sys;print(1 if json.load(open('$outDir/linescan/${Llook}_pushframe.json')).get('framelet_order_reversed') else 0)" 2>/dev/null || echo -1)
+  revR=$(python3 -c "import json,sys;print(1 if json.load(open('$outDir/linescan/${Rlook}_pushframe.json')).get('framelet_order_reversed') else 0)" 2>/dev/null || echo -1)
   cat > "$out/pair.env" <<ENV
 out='$out'
 geounc='$geounc'
@@ -157,6 +165,10 @@ matchPrefix='$matchPrefix'
 imgList='$imgList'
 camList='$camList'
 T='$T'
+Llook='$Llook'
+Rlook='$Rlook'
+revLlook='$revL'
+revRlook='$revR'
 ENV
 }
 
