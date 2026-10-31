@@ -1,13 +1,14 @@
 #!/bin/bash
-# cassis_ctx_sub8_blend.sh <ctxDir> <tag> <clat> <clon> - robust CTX reference blend from pre-warped DTMs.
+# cassis_ctx_blend.sh <ctxDir> <tag> <clat> <clon> - build the CTX reference DEM from downloaded DTMs.
 #
-# This is the blend-and-cull half of the canonical CTX-reference recipe (the download+warp half is in
-# cassis_ctx_build.sh). Run it when the per-DTM 18 m warps already exist, to (re)build the reference without
-# re-downloading. It reuses the cached warps, so a blend change costs minutes, not a full rebuild.
+# All CTX-reference work is two steps: FETCH then PROCESS. cassis_ctx_fetch.sh runs on the HEAD NODE (it
+# needs net access) to compute the box and download the DTMs. This script is the PROCESS step and belongs
+# on a COMPUTE NODE (qsub): it is heavy GDAL / dem_mosaic work. It warps each downloaded DTM to the grid,
+# crops to the box, culls outliers, feather-blends, and makes the blur5 mapproj DEM. Warps are cached as
+# dl/*_gw.tif, so re-running to try a different blend costs minutes (the warps are reused).
 #
-# Inputs expected under <ctxDir>:
-#   dl/*_gw.tif    each controlled-CTX DTM warped to the 18 m local-stereographic grid (-tap, cubicspline).
-#                  Any raw dl/*_dem.tif without a _gw.tif sibling is warped here using <clat>/<clon>.
+# Inputs expected under <ctxDir> (produced by cassis_ctx_fetch.sh):
+#   dl/*_dem.tif   each controlled-CTX DTM as downloaded (warped here to the 18 m grid, cached as _gw.tif).
 #   box_te.txt     one line "xmin ymin xmax ymax" (projected meters) = the 3x-footprint crop box.
 # Output:
 #   <ctxDir>/<tag>_ctx_18m.tif           the reference DEM (seamless, consensus elevations, cropped to box)
@@ -35,7 +36,7 @@ threads=${CTX_THREADS:-20}
 
 [ -s "$ctxDir/box_te.txt" ] || { echo "ERROR missing $ctxDir/box_te.txt"; exit 1; }
 read TE0 TE1 TE2 TE3 < "$ctxDir/box_te.txt"
-echo "[ctx_sub8] box -te $TE0 $TE1 $TE2 $TE3  threads=$threads"
+echo "[ctx_blend] box -te $TE0 $TE1 $TE2 $TE3  threads=$threads"
 
 PROJ="+proj=stere +lat_0=$clat +lon_0=$clon +k=1 +x_0=0 +y_0=0 +R=3396190 +units=m +no_defs"
 
@@ -50,7 +51,7 @@ for raw in "$ctxDir"/dl/*_dem.tif; do
 done
 wait
 
-echo "[ctx_sub8] downsampling warps to sub-8 (144 m)"
+echo "[ctx_blend] downsampling warps to sub-8 (144 m)"
 for c in "$ctxDir"/dl/*_gw.tif; do
   [ -s "$c" ] || continue
   s8="$ctxDir/dl/$(basename "$c" _gw.tif)_sub8.tif"
@@ -63,16 +64,16 @@ wait
 
 sub8_tiles=$(ls "$ctxDir"/dl/*_sub8.tif 2>/dev/null)
 n_tiles=$(echo $sub8_tiles | wc -w)
-echo "[ctx_sub8] $n_tiles sub-8 tiles"
+echo "[ctx_blend] $n_tiles sub-8 tiles"
 [ "$n_tiles" -gt 0 ] || { echo "ERROR no sub-8 tiles to blend"; exit 1; }
 
-echo "[ctx_sub8] sub-8 median consensus"
+echo "[ctx_blend] sub-8 median consensus"
 rm -f "$ctxDir"/_sub8_median*.tif
 dem_mosaic --threads "$threads" --median $sub8_tiles -o "$ctxDir/_sub8_median" >/dev/null 2>&1
 med_tif=$(ls "$ctxDir"/_sub8_median*.tif 2>/dev/null | head -1)
 [ -s "$med_tif" ] || { echo "ERROR failed to build sub-8 median"; exit 1; }
 
-echo "[ctx_sub8] outlier cull vs consensus (|mean|>30 m or stddev>40 m)"
+echo "[ctx_blend] outlier cull vs consensus (|mean|>30 m or stddev>40 m)"
 surviving_gw=""; cull_count=0; keep_count=0
 mkdir -p "$ctxDir/cull_diff"
 for s8 in "$ctxDir"/dl/*_sub8.tif; do
@@ -96,27 +97,27 @@ for s8 in "$ctxDir"/dl/*_sub8.tif; do
   fi
   [ "$keep" -eq 1 ] && { surviving_gw="$surviving_gw $gw"; keep_count=$((keep_count+1)); }
 done
-echo "[ctx_sub8] kept $keep_count, culled $cull_count"
+echo "[ctx_blend] kept $keep_count, culled $cull_count"
 if [ "$keep_count" -lt 1 ]; then
-  echo "[ctx_sub8] WARNING all tiles culled - falling back to all warps"
+  echo "[ctx_blend] WARNING all tiles culled - falling back to all warps"
   surviving_gw=$(ls "$ctxDir"/dl/*_gw.tif 2>/dev/null)
 fi
 
-echo "[ctx_sub8] full-res feathered blend of survivors"
+echo "[ctx_blend] full-res feathered blend of survivors"
 rm -f "$ctxDir"/_blend*.tif
 dem_mosaic --threads "$threads" $surviving_gw -o "$ctxDir/_blend" >/dev/null 2>&1
 bl=$(ls "$ctxDir"/_blend*.tif 2>/dev/null | head -1)
 [ -s "$bl" ] || { echo "ERROR dem_mosaic blend failed"; exit 1; }
 
-echo "[ctx_sub8] crop to box -> ${tag}_ctx_18m.tif"
+echo "[ctx_blend] crop to box -> ${tag}_ctx_18m.tif"
 gdalwarp -q -overwrite -te $TE0 $TE1 $TE2 $TE3 -tr 18 18 -r near -co COMPRESS=LZW "$bl" "$ctxDir/${tag}_ctx_18m.tif"
 gdaldem hillshade -multidirectional -compute_edges "$ctxDir/${tag}_ctx_18m.tif" "$ctxDir/${tag}_ctx_18m_hillshade.tif" >/dev/null 2>&1
 
-echo "[ctx_sub8] regenerate blur5 mapprojDem"
+echo "[ctx_blend] regenerate blur5 mapprojDem"
 rm -f "$ctxDir"/_cb18*.tif
 dem_mosaic --threads "$threads" --dem-blur-sigma 5 "$ctxDir/${tag}_ctx_18m.tif" -o "$ctxDir/_cb18" >/dev/null 2>&1
 bl5=$(ls "$ctxDir"/_cb18*.tif 2>/dev/null | head -1)
 [ -s "$bl5" ] && mv "$bl5" "$ctxDir/${tag}_ctx_18m_blur5.tif"
 
-echo "[ctx_sub8] DONE -> $ctxDir/${tag}_ctx_18m.tif"
+echo "[ctx_blend] DONE -> $ctxDir/${tag}_ctx_18m.tif"
 gdalinfo -stats "$ctxDir/${tag}_ctx_18m.tif" 2>/dev/null | grep -E "Size is|VALID_PERCENT"

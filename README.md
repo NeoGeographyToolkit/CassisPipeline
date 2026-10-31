@@ -156,45 +156,49 @@ approach used later for the CaSSIS images, described at
 
 ### Build the CTX reference DEM and the blurred mapproj DEM
 
-Assemble the CTX reference DEM (*refDem*) for the site from existing CTX DEMs, and
-make the low-resolution blurred mapproj DEM (*mapprojDem*) from it. See the
+The CTX reference is assembled from existing controlled CTX DEMs. See the
 [documentation](https://stereopipeline.readthedocs.io/en/latest/examples/cassis.html#cassis-ctx-ref).
+Think of it as two steps, split by where they run: **fetch** (needs network) and
+**process** (heavy compute). On a cluster, fetch on the front-end node and process
+on a compute node.
+
+**Fetch** computes the box, queries the USGS STAC, and downloads the controlled
+CTX DTMs. Run it where there is outside network access:
 
 ```bash
-cassis_ctx_build.sh VENDOR_DTM LAT0 LON0 OUTDIR TAG
+cassis_ctx_fetch.sh CTXDIR FOOTPRINT_DEM CLAT CLON
 ```
 
-See the script header for the arguments. LAT0 and LON0 are the site center; for
-Jezero they are near latitude 18.4, longitude 77.5.
+FOOTPRINT_DEM is the DEM that defines the footprint (the linescan or vendor DEM).
+CLAT and CLON are the site center; for Jezero they are near latitude 18.4,
+longitude 77.5. This writes *box_te.txt*, *ctx_list.txt*, and the raw DTMs under
+*CTXDIR*/dl/. The box is *BOX_FACTOR* times the footprint (default 3).
+
+**Process** warps the downloaded DTMs to the grid, crops to the box, culls the
+outlier DTMs, feather-blends the rest, and makes the blurred mapproj DEM. It is
+heavy, so run it on a compute node (qsub):
+
+```bash
+cassis_ctx_blend.sh CTXDIR TAG CLAT CLON
+```
+
+How the overlapping DEMs are combined matters. A plain first-valid or median stack
+leaves visible tile seams in the reference, and those seams then show up as
+artifacts in the dz difference. So the blend first culls outlier DTMs at a coarse
+144 m resolution against their median, then does a single full-resolution feathered
+blend of the survivors, which is seamless while keeping the consensus elevations.
+The warps are cached, so re-running the blend to try a different combination costs
+minutes. The blurred mapproj DEM is always regenerated from the current reference,
+so it never lags behind a rebuilt reference and silently drops framelets.
 
 This step needs attention, as some sites may lack good prior CTX coverage. Check
 that both the reference DEM and the mapproj DEM were produced, then set *refDem*
 and *mapprojDem* in the site config.
 
-*cassis_ctx_build.sh* produces both the reference DEM and the blurred mapproj
-DEM. See the ASP [Preparation of reference CTX
-DEM](https://stereopipeline.readthedocs.io/en/latest/examples/cassis.html#cassis-ctx-ref).
-
-When several controlled CTX DEMs overlap the site, how they are combined matters.
-A plain first-valid or median stack can leave visible tile seams in the reference,
-and those seams then show up as artifacts in the dz difference. The robust path,
-selected with the environment variable CTX_STACK=sub8, first culls outlier DEMs
-at a coarse 144 m resolution against their median, then does a single full
-resolution feathered blend of the survivors. This gives a seamless reference. The
-blurred mapproj DEM is always regenerated from the current reference, so it never
-lags behind a rebuilt reference and silently drops framelets.
-
-When the per-DTM warps already exist, *cassis_ctx_sub8_blend.sh* rebuilds just the
-blend without re-downloading:
-
-```bash
-cassis_ctx_sub8_blend.sh CTXDIR TAG CLAT CLON
-```
-
-CTXDIR holds the warped DTMs under dl and a box_te.txt crop box. The script does
-the sub-8 cull and the full-resolution feathered blend, then writes the reference,
-its hillshade, and the blur5 mapproj DEM. A blend change costs minutes instead of a
-full rebuild.
+*cassis_ctx_build.sh* is the older all-in-one that does fetch and process in one
+script (with the same blend selectable as CTX_STACK=sub8). The two-step
+fetch-then-blend flow above is preferred, since it keeps the network step and the
+compute step cleanly separate.
 
 The Jezero sample has these two products.
 
