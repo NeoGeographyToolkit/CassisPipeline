@@ -24,7 +24,7 @@ BIN=$(cd "$(dirname "$0")" && pwd)
 [ -s "$B/cassis_common.conf" ] && source "$B/cassis_common.conf"
 [ -s "$B/$cfg" ] || { echo "ERROR missing site config $cfg"; exit 1; }
 source "$B/$cfg"
-source cassis_env_check.sh
+source "$BIN/cassis_env_check.sh"
 cassis_require bundle_adjust parallel_stereo point2dem pc_align gdalwarp gdalinfo gdalsrsinfo
 
 # Input cubs come from inputCassisDir (found by look sid); outputs go under outDir.
