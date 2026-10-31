@@ -175,6 +175,15 @@ and *mapprojDem* in the site config.
 DEM. See the ASP [Preparation of reference CTX
 DEM](https://stereopipeline.readthedocs.io/en/latest/examples/cassis.html#cassis-ctx-ref).
 
+When several controlled CTX DEMs overlap the site, how they are combined matters.
+A plain first-valid or median stack can leave visible tile seams in the reference,
+and those seams then show up as artifacts in the dz difference. The robust path,
+selected with the environment variable CTX_STACK=sub8, first culls outlier DEMs
+at a coarse 144 m resolution against their median, then does a single full
+resolution feathered blend of the survivors. This gives a seamless reference. The
+blurred mapproj DEM is always regenerated from the current reference, so it never
+lags behind a rebuilt reference and silently drops framelets.
+
 The Jezero sample has these two products.
 
 ## Tier 2: data processing
@@ -364,6 +373,37 @@ max-triangulation-error mosaic. Compare the DEM to the CTX reference with
 geodiff for the vertical difference and by hillshade image correlation for the
 horizontal registration, as in
 [Evaluation](https://stereopipeline.readthedocs.io/en/latest/examples/cassis.html#cassis-eval).
+
+## Evaluation figures and results gallery
+
+Two helper tools summarize a finished run visually. Both use a Python environment
+with matplotlib and the GDAL Python bindings.
+
+*cassis_eval_plots.py* makes the six evaluation panels for one site as separate
+images, so a gallery can lay them three per row:
+
+```bash
+cassis_eval_plots.py TAG CTX_18M ALIGNED_LINESCAN FINAL_ON_CTX DZ_DIFF DDH DDV OUTDIR
+```
+
+The first row is a grayscale hillshade of the CTX reference, the aligned linescan
+DEM, and the final stage-7 DEM. These three must cover the same ground. The
+dz and disparity statistics hide missing coverage, so this row is how a dropped
+or truncated framelet DEM is caught. The second row is the elevation difference
+to CTX and the across-track and along-track disparity from hillshade image
+correlation. The tool also writes *TAG_stats.tsv* with the median and NMAD of
+each of the three difference bands.
+
+*cassis_gallery.py* assembles a self-contained HTML gallery from a set of those
+panels and stats files:
+
+```bash
+cassis_gallery.py MANIFEST.tsv PANELS_DIR OUT.html [TITLE]
+```
+
+The manifest has one tab-separated line per site with columns tag, id, coord,
+convergence, group, and note. The page shows each site's six panels and a
+summary table ranked by dz NMAD. Images are embedded so the file is portable.
 
 ## Joint CTX and CaSSIS jitter solving
 
