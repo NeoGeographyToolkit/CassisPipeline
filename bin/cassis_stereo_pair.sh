@@ -75,11 +75,18 @@ case "$mode" in
     [ -n "$m" ] && cp -f "$m" "$mf" || echo "  NO MATCH lr $a $b (--corr-seed-mode 1 and 0 both failed)"
     ;;
   same)
-    # Same-look tie between consecutive framelets. They see the SAME ground only over a thin
-    # overlap band (~H-advance rows, ~57 of 280 here) at ONE end of each framelet. The old
-    # full-frame affineepipolar matcher aborted on low-texture (crater) pairs because it needs
-    # >=20 matched interest points to estimate the search range over a ~220-line raw disparity,
-    # and the bland overlap could not supply them. Fix: restrict the correlator to the overlap
+    # Same-look tie between consecutive framelets. PRIMARY = full-frame affineepipolar (the
+    # proven path; it matches most textured pairs richly). It ABORTS on low-texture (crater)
+    # pairs because it needs >=20 matched interest points to estimate the search range over a
+    # ~220-line raw disparity and the bland overlap cannot supply them; for THOSE we FALL BACK
+    # to the crop-window matcher below. (Crop-win is NOT used wholesale: it restricts the
+    # correlator to a ~57-row overlap band, so at the ~0.16-deg same-look convergence the
+    # num-matches-from-disparity triangulation hits "empty bounding box" on the lowest-
+    # convergence pairs that affineepipolar's full-frame geometry handles fine - so affine
+    # leads and crop-win only rescues the pairs affine cannot match at all.)
+    #
+    # The crop-win overlap band sees the SAME ground over ~(H-advance) rows (~57 of 280) at ONE
+    # end of each framelet. Restrict the correlator to the overlap
     # band with --left/right-image-crop-win. Inside the windows the overlap is ~full and the
     # residual disparity is only a few pixels (plus the pad offset), so plain alignment-method
     # none with a small explicit --corr-search locks densely even on featureless floor, with NO
@@ -88,10 +95,23 @@ case "$mode" in
     # framelet_order_reversed the stitch recorded (reversed=1 -> lower-index framelet overlaps at
     # its TOP, higher at BOTTOM; reversed=0 -> the opposite), VERIFIED on both looks, so we crop
     # deterministically with ONE stereo per pair, falling back to try-both only if that flag is
-    # missing. Crop-win is uniform: textured pairs match the same way.
+    # missing. Some lowest-convergence pairs fail crop-win triangulation too (empty bounding box);
+    # those stay unmatched, same as before - the net effect is affine's set plus the crater pairs
+    # crop-win can triangulate, never fewer than affine alone.
     [ -s "$mf" ] && exit 0
     ia=$(img_of "$a"); ib=$(img_of "$b")
     [ -s "$ia" ] && [ -s "$ib" ] && [ -s "$ca" ] && [ -s "$cb" ] || { echo "  skip same $a $b (no input)"; exit 0; }
+    # PRIMARY: full-frame affineepipolar (proven; keep whatever it matches). Only on abort/no
+    # match do we fall through to the crop-window rescue below.
+    aff="$od/aff"; rm -rf "$aff"; mkdir -p "$aff"
+    parallel_stereo --processes 1 --threads-multiprocess $T --threads-singleprocess $T                  \
+      --alignment-method affineepipolar --stereo-algorithm asp_mgm --subpixel-mode 9 --corr-seed-mode 1 \
+      --ip-detect-method 1 --ip-per-image 12000                                                         \
+      --num-matches-from-disparity $nmd --min-triangulation-angle 1e-10                                 \
+      "$ia" "$ib" "$ca" "$cb" "$aff/run" > "$aff.log" 2>&1
+    m=$(ls "$aff"/run-disp-*.match 2>/dev/null | head -1)
+    if [ -n "$m" ] && [ -s "$m" ]; then cp -f "$m" "$mf"; echo "  same $a $b: affine match"; exit 0; fi
+    echo "  same $a $b: affine failed, trying crop-win rescue"
     # framelet size (W x H) from the image; defaults for CaSSIS PAN if gdalinfo is unavailable
     sz=$(gdalinfo "$ia" 2>/dev/null | sed -n 's/.*Size is \([0-9][0-9]*\), \([0-9][0-9]*\).*/\1 \2/p' | head -1)
     W=$(echo "$sz" | awk '{print $1}'); H=$(echo "$sz" | awk '{print $2}')
