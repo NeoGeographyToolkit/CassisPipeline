@@ -184,6 +184,18 @@ resolution feathered blend of the survivors. This gives a seamless reference. Th
 blurred mapproj DEM is always regenerated from the current reference, so it never
 lags behind a rebuilt reference and silently drops framelets.
 
+When the per-DTM warps already exist, *cassis_ctx_sub8_blend.sh* rebuilds just the
+blend without re-downloading:
+
+```bash
+cassis_ctx_sub8_blend.sh CTXDIR TAG CLAT CLON
+```
+
+CTXDIR holds the warped DTMs under dl and a box_te.txt crop box. The script does
+the sub-8 cull and the full-resolution feathered blend, then writes the reference,
+its hillshade, and the blur5 mapproj DEM. A blend change costs minutes instead of a
+full rebuild.
+
 The Jezero sample has these two products.
 
 ## Tier 2: data processing
