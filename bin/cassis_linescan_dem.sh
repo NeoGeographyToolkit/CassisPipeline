@@ -222,16 +222,42 @@ PYG
 # helper: is the current residual a pass? |median| <= 10 px for both dh and dv.
 align_ok() { awk -v h="${GDH:-999}" -v v="${GDV:-999}" 'BEGIN{h=(h<0?-h:h);v=(v<0?-v:v);exit (h>10||v>10)?1:0}'; }
 
-# method 1 (default): sparse hillshade-init, rigid (no scale). Works on textured sites.
-echo "S5 METHOD 1: sparse hillshade-init (pc_align --initial-transform-from-hillshading rigid)"
-pc_align --max-displacement -1 --num-iterations 0 --max-num-reference-points 1000000 \
-  --initial-transform-from-hillshading rigid --initial-transform-ransac-params 1000 3 \
-  --save-transformed-source-points "$cwin" "$dwin" -o "$al/run" > "$out/align_log.txt" 2>&1 \
-  || { echo "  method 1 pc_align FAILED (recorded)"; tail -20 "$out/align_log.txt"; }
-grep -aE "Translation vector|magnitude of translation|Number of.*matches" "$out/align_log.txt" | sed 's/^/  /'
-GDH=999; GDV=999; method="sparse-IP"
-[ -s "$al/run-transform.txt" ] && { apply_and_regrid; eval_and_overlay; }
-echo "  method 1 (sparse-IP) residual dh/dv median = ${GDH} / ${GDV} px"
+# method 0 (PRIMARY, robust): NCC global hillshade correlation. A full-search template match of the
+# linescan hillshade over the CTX hillshade gives the rigid shift directly. Unlike ICP-from-scratch
+# (methods 1-2) it cannot settle into a wrong local minimum - the registration is a known rigid shift and
+# the raw strip already sits inside the (3x) CTX box, so a global correlation is the ideal tool (it caught
+# a 20 km mis-lock that sparse-IP pc_align returned confidently on a VM-outflow site). NCC emits a local
+# NED shift; pc_align --num-iterations 0 --initial-ned-translation turns it into the honest ECEF
+# cassis->ctx transform (the same final-transform step method 2 uses), which stage 2 applies to the
+# cameras. Cheap (~1 min, one process). Needs scipy + osgeo in python; if that import fails NCC is skipped
+# and the old methods run. Methods 1 and 2 are kept as fall-through for any site NCC does not pass.
+echo "S5 METHOD 0: NCC global hillshade correlation (robust primary)"
+GDH=999; GDV=999; method="ncc"
+ned=$(python3 "$selfBin/cassis_ctx_ncc_align.py" "$coarse" "$demc" "${CTX_ALIGN_NCC_RES:-36}" "$al" 2>"$out/align_ncc.txt" | awk '/NED_TRANSLATION/{print $2, $3, $4}')
+if [ -n "$ned" ] && [ "$ned" != "0 0 0" ]; then
+  echo "  NCC NED translation (N E D, m): $ned"
+  pc_align --max-displacement -1 --num-iterations 0 --initial-ned-translation "$ned"             \
+    --save-transformed-source-points "$coarse" "$demc" -o "$al/run" >> "$out/align_ncc.txt" 2>&1 \
+    || echo "  method 0 NCC pc_align FAILED (recorded)"
+  [ -s "$al/run-transform.txt" ] && { apply_and_regrid; eval_and_overlay; }
+  echo "  method 0 (ncc) residual dh/dv median = ${GDH} / ${GDV} px"
+else
+  echo "  NCC produced no shift (python scipy/osgeo import issue?) - falling through to the old methods"
+fi
+
+# method 1 (fall-through): sparse hillshade-init, rigid (no scale). Works on textured sites. Runs only if
+# NCC (method 0) did not pass the corr-eval.
+if ! align_ok; then
+  echo "S5 METHOD 0 did not pass -> METHOD 1: sparse hillshade-init (pc_align --initial-transform-from-hillshading rigid)"
+  pc_align --max-displacement -1 --num-iterations 0 --max-num-reference-points 1000000           \
+    --initial-transform-from-hillshading rigid --initial-transform-ransac-params 1000 3          \
+    --save-transformed-source-points "$cwin" "$dwin" -o "$al/run" > "$out/align_log.txt" 2>&1    \
+    || { echo "  method 1 pc_align FAILED (recorded)"; tail -20 "$out/align_log.txt"; }
+  grep -aE "Translation vector|magnitude of translation|Number of.*matches" "$out/align_log.txt" | sed 's/^/  /'
+  GDH=999; GDV=999; method="sparse-IP"
+  [ -s "$al/run-transform.txt" ] && { apply_and_regrid; eval_and_overlay; }
+  echo "  method 1 (sparse-IP) residual dh/dv median = ${GDH} / ${GDV} px"
+fi
 
 # method 2 (fall-through): asp_bm dense correlation + NED translation. Triggered only
 # if method 1 fails. For low-texture sites (oxia1) sparse IP finds too few inliers -> a
