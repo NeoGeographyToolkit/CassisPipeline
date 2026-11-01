@@ -95,9 +95,8 @@ case "$mode" in
     # framelet_order_reversed the stitch recorded (reversed=1 -> lower-index framelet overlaps at
     # its TOP, higher at BOTTOM; reversed=0 -> the opposite), VERIFIED on both looks, so we crop
     # deterministically with ONE stereo per pair, falling back to try-both only if that flag is
-    # missing. Some lowest-convergence pairs fail crop-win triangulation too (empty bounding box);
-    # those stay unmatched, same as before - the net effect is affine's set plus the crater pairs
-    # crop-win can triangulate, never fewer than affine alone.
+    # missing. The crop-win matcher itself retries the disparity outlier filter (default then a
+    # smaller rm-half-kernel) to recover the thinnest/lowest-contrast overlaps - see cropped_try.
     [ -s "$mf" ] && exit 0
     ia=$(img_of "$a"); ib=$(img_of "$b")
     [ -s "$ia" ] && [ -s "$ib" ] && [ -s "$ca" ] && [ -s "$cb" ] || { echo "  skip same $a $b (no input)"; exit 0; }
@@ -120,18 +119,28 @@ case "$mode" in
     K=90; [ "$K" -ge "$H" ] && K=$(( H > 20 ? H - 10 : H ))   # overlap-band window (rows)
     topwin="0 0 $W $K"; botwin="0 $(( H - K )) $W $K"
     nmatch() { [ -s "$1" ] && python3 -c "import struct,sys;print(struct.unpack('<q',open(sys.argv[1],'rb').read(8))[0])" "$1" 2>/dev/null || echo 0; }
-    same_try() {  # $1=outdir $2=left-cropwin $3=right-cropwin $4=corr-seed-mode ; echoes match path
-      rm -rf "$1"; mkdir -p "$1"
-      parallel_stereo --processes 1 --threads-multiprocess $T --threads-singleprocess $T           \
-        --left-image-crop-win $2 --right-image-crop-win $3                                         \
-        --alignment-method none --stereo-algorithm asp_mgm --subpixel-mode 9 --corr-seed-mode "$4" \
-        --corr-search -24 -55 24 55                                                                \
-        --num-matches-from-disparity $nmd --min-triangulation-angle 1e-10                          \
-        "$ia" "$ib" "$ca" "$cb" "$1/run" > "$1.log" 2>&1
-      ls "$1"/run-disp-*.match 2>/dev/null | head -1
+    same_try() {  # $1=outdir $2=left-cropwin $3=right-cropwin ; $4+ = extra corr opts ; echoes match
+      local od1=$1 lcw=$2 rcw=$3; shift 3
+      rm -rf "$od1"; mkdir -p "$od1"
+      parallel_stereo --processes 1 --threads-multiprocess $T --threads-singleprocess $T        \
+        --left-image-crop-win $lcw --right-image-crop-win $rcw                                  \
+        --alignment-method none --stereo-algorithm asp_mgm --subpixel-mode 9 --corr-seed-mode 1 \
+        --corr-search -24 -55 24 55 "$@"                                                        \
+        --num-matches-from-disparity $nmd --min-triangulation-angle 1e-10                       \
+        "$ia" "$ib" "$ca" "$cb" "$od1/run" > "$od1.log" 2>&1
+      ls "$od1"/run-disp-*.match 2>/dev/null | head -1
     }
-    cropped_try() {  # $1=left-cropwin $2=right-cropwin (into $od); seed 1 then 0; echoes match
-      local m; m=$(same_try "$od" "$1" "$2" 1); [ -z "$m" ] && m=$(same_try "$od" "$1" "$2" 0); echo "$m"
+    cropped_try() {  # $1=left-cropwin $2=right-cropwin (into $od) ; echoes the produced match
+      # Try the DEFAULT disparity outlier filter first; on no-match retry with a SMALLER
+      # rm-half-kernel (3 3). The default rm kernel is sized for full images and over-scrubs the
+      # thin (~57-row) overlap band's low-res D_sub, collapsing the search range to 1x1; a smaller
+      # kernel keeps the sparse-but-valid disparity. The two kernels recover COMPLEMENTARY sets of
+      # the lowest-contrast pairs (default gets some, rm 3 3 the others), so trying both covers all.
+      # (NOT --filter-mode 0: that disables the LATER final-disparity filter, too late to matter;
+      # NOT --edge-buffer-size 0: tested harmful, it cut matches and regressed pairs.)
+      local m; m=$(same_try "$od" "$1" "$2")
+      [ -z "$m" ] && m=$(same_try "${od}_rm" "$1" "$2" --rm-half-kernel 3 3)
+      echo "$m"
     }
     # this pair's look + its reverse flag + the two framelet indices (a=left, b=right)
     rev=-1; sid=""
