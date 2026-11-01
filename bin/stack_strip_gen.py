@@ -71,6 +71,14 @@ KEEP_OVERRIDE = int(sys.argv[5]) if len(sys.argv) > 5 else 0  # force KEEP (true
 for sid in (sid1, sid2):
     sign, mag, fs = results[sid]
     keep = KEEP_OVERRIDE if KEEP_OVERRIDE else int(round(mag))   # nearest int to sub-pixel |advance|
+    # A real CaSSIS along-track advance is ~150-223 rows. If it measures near zero, the consecutive-framelet
+    # xcorr found no consistent shift, i.e. the framelets lack along-track texture - KEEP would be 0 and the
+    # strip would be empty (an illegal 0-row raster). Fail here with a clear reason instead of a cryptic GDAL
+    # crash downstream: such a pair is almost certainly too low-texture for stereo and should be dropped.
+    if keep < 20:
+        sys.exit(f"ERROR: look {sid} along-track advance measured |{mag:.2f}| -> keep={keep} (<20 rows). "
+                 f"The framelets lack detectable along-track texture to stack into a continuous strip; this "
+                 f"pair is almost certainly too low-texture for stereo. Drop it, or inspect the framelets.")
     reverse = (sign < 0)
     fs_ordered = list(reversed(fs)) if reverse else fs
     arrs = []

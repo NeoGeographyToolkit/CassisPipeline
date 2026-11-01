@@ -18,16 +18,39 @@
 # overlap-complete, so every DTM intersecting the box is a candidate; never cap by name (that can drop the
 # very strips over the footprint and fake a data gap).
 #
-# gdalwarp/gdalinfo and python3 (urllib) must be on PATH, with curl for the downloads. The caller sets up
-# the environment; this script hardcodes no paths.
+# The <footprint> argument is EITHER a DEM file (the vendor or linescan DEM) OR, when there is no such DEM
+# yet, a bounding box written as  bbox:minLon,minLat,maxLon,maxLat  (east longitudes, degrees). The bbox
+# form is for a new site processed from scratch: the linescan DEM cannot be built before the CTX exists (it
+# needs the CTX grid), and there may be no prior vendor DEM, so the footprint is seeded from the observation
+# footprint published by ODE. A tiny constant stand-in raster is synthesized over that bbox and used exactly
+# as a DEM file would be (only its extent matters). The coordinates come from the stereo-pair record (ODE /
+# the pair inventory); bbox and clat/clon describe the same footprint.
+#
+# gdalwarp/gdalinfo/gdal_create and python3 (urllib) must be on PATH, with curl for the downloads. The caller
+# sets up the environment; this script hardcodes no paths.
 set -e; umask 022
 ctxDir=${1:?ctxDir (output dir)}
-footprint=${2:?footprintDEM (defines the box, e.g. the linescan or vendor DEM)}
+footprint=${2:?footprintDEM file OR bbox:minLon,minLat,maxLon,maxLat (defines the box)}
 clat=${3:?clat (site center latitude)}
 clon=${4:?clon (site center longitude)}
 mkdir -p "$ctxDir/dl"
 PROJ="+proj=stere +lat_0=$clat +lon_0=$clon +k=1 +x_0=0 +y_0=0 +R=3396190 +units=m +no_defs"
 TRC=18
+
+# Vendor-free footprint: synthesize a constant stand-in raster over the given lon/lat bbox (Mars geographic)
+# and use it as the footprint DEM. Only the extent is read downstream, so a 1-valued raster is sufficient.
+case "$footprint" in
+  bbox:*)
+    IFS=, read -r MINLON MINLAT MAXLON MAXLAT <<<"${footprint#bbox:}"
+    [ -n "$MAXLAT" ] || { echo "FATAL: bbox must be bbox:minLon,minLat,maxLon,maxLat"; exit 1; }
+    standin="$ctxDir/_footprint_standin.tif"
+    gdal_create -q -outsize 120 300 -a_srs "+proj=longlat +R=3396190 +no_defs" \
+      -a_ullr "$MINLON" "$MAXLAT" "$MAXLON" "$MINLAT" -burn 1 -ot Float32 "$standin"
+    echo "[fetch] vendor-free footprint stand-in over bbox [$MINLON,$MINLAT,$MAXLON,$MAXLAT] -> $standin"
+    footprint="$standin"
+    ;;
+esac
+[ -s "$footprint" ] || { echo "FATAL: footprint not found: $footprint"; exit 1; }
 
 echo "[fetch 0] ${BOX_FACTOR:-3}x snapped box from the footprint ($(date))"
 gdalwarp -q -overwrite -t_srs "$PROJ" -tr $TRC $TRC -r near "$footprint" "$ctxDir/_footprint_localgrid.tif" >/dev/null 2>&1
@@ -52,14 +75,33 @@ echo "  box -te $TE0 $TE1 $TE2 $TE3  ($(( (TE2-TE0)/1000 )) x $(( (TE3-TE1)/1000
 echo "[fetch 1] STAC select controlled-CTX 'dem' assets over the box (cap CTX_MAXDTM=${CTX_MAXDTM:-400}) ($(date))"
 if [ -s "$ctxDir/ctx_list.txt" ]; then echo "  using cached ctx_list.txt (skip STAC query)"; else
 python3 - "$ctxDir/ctx_list.txt" "$BXW" "$BYS" "$BXE" "$BYN" "$clon" "$clat" <<'PY'
-import urllib.request,json,sys,os
+import urllib.request,json,sys,os,time
 out=sys.argv[1]; w,s,e,n=map(float,sys.argv[2:6]); lon0=float(sys.argv[6]); lat0=float(sys.argv[7])
 cap=int(os.environ.get('CTX_MAXDTM','400'))
 STAC="https://stac.astrogeology.usgs.gov/api/search"; coll="mro_ctx_controlled_usgs_dtms"
 wrap=lambda l: l-360 if l>180 else l
-body={"collections":[coll],"bbox":[wrap(w),s,wrap(e),n],"limit":1000}
-req=urllib.request.Request(STAC,data=json.dumps(body).encode(),headers={"Content-Type":"application/json"})
-feats=json.load(urllib.request.urlopen(req,timeout=120)).get("features",[])
+# PAGINATE the STAC search. A single big limit:1000 bbox query 502s over very dense controlled-CTX regions
+# (the gateway times out gathering the result), while a small page size always returns fast. So fetch in
+# pages of STAC_PAGE (default 250), following the pgstac `next` link token, until no next page, no new
+# features, or a page budget. Each page retries on a transient network blip. This keeps the query
+# overlap-complete without ever asking the gateway for more than it can serialize at once.
+page=int(os.environ.get('STAC_PAGE','250')); maxpages=int(os.environ.get('STAC_MAXPAGES','40'))
+def post(url,body):
+    req=urllib.request.Request(url,data=json.dumps(body).encode(),headers={"Content-Type":"application/json"})
+    for attempt in range(1,7):
+        try: return json.load(urllib.request.urlopen(req,timeout=120))
+        except Exception as ex:
+            if attempt==6: raise
+            print("  STAC page attempt %d failed (%s); retrying in %ds"%(attempt,ex,5*attempt)); sys.stdout.flush()
+            time.sleep(5*attempt)
+url=STAC; body={"collections":[coll],"bbox":[wrap(w),s,wrap(e),n],"limit":page}; feats=[]
+for pg in range(maxpages):
+    d=post(url,body); got=d.get("features",[]); feats+=got
+    nxt=next((l for l in d.get("links",[]) if l.get("rel")=="next"),None)
+    if not got or not nxt: break
+    url=nxt.get("href",STAC); body=nxt.get("body",body)   # follow the pgstac token page
+else:
+    print("  NOTE: hit STAC_MAXPAGES=%d page budget; selection may be truncated"%maxpages); sys.stdout.flush()
 best={}
 for f in feats:
     fid=f["id"]; a=f.get("assets",{}); href=None
@@ -82,7 +124,9 @@ while IFS=$'\t' read -r fid href; do
   if [ -s "$dst" ] && gdalinfo "$dst" >/dev/null 2>&1; then ok=$((ok+1)); continue; fi
   # download to a .part, validate, then move into place, so dl/ only ever holds complete valid DTMs and no
   # rm of a variable path is needed (a failed .part is simply overwritten on the next run).
-  curl -s --max-time 900 "$href" -o "$dst.part"
+  # `|| true`: under set -e a transient non-zero curl (a blip, a timeout) must NOT abort the whole loop -
+  # the gdalinfo check below decides success, and a failed DTM is simply reported and skipped.
+  curl -s --max-time 900 --retry 4 --retry-delay 3 "$href" -o "$dst.part" || true
   if [ -s "$dst.part" ] && gdalinfo "$dst.part" >/dev/null 2>&1; then mv -f "$dst.part" "$dst"; ok=$((ok+1)); else echo "  FAIL $fid"; fi
 done < "$ctxDir/ctx_list.txt"
 echo "[fetch] DONE: have $ok / $n raw DTMs in $ctxDir/dl/  (next: cassis_ctx_blend.sh $ctxDir <tag> $clat $clon on a compute node)"

@@ -14,16 +14,31 @@ CaSSIS](https://stereopipeline.readthedocs.io/en/latest/examples/cassis.html).
 
 ## How the pipeline is organized
 
-The work splits into two tiers.
+The work splits by WHERE a step runs. One group needs the network; the rest is pure
+compute. On a cluster, run the first group on a front-end (head) node and the second
+on a compute node.
 
-**Tier 1, data ingestion.** Fetch the calibrated framelet images from the ESA
-Planetary Science Archive, download the published CaSSIS DEM, download the SPICE
-kernels, ingest the framelets to ISIS cubes, generate a CSM camera per framelet,
-build the CTX reference DEM for the site, and make the blurred low-resolution
-mapproj DEM from it. These steps need network access and careful inspection.
+**Fetch (network only).** Discover the two stereo look ids for the orbit
+(*cassis_find_looks.sh*), download the calibrated framelet images from the ESA
+Planetary Science Archive (*cassis_fetch_pair.sh*), and download the controlled CTX
+DTMs that cover the site (*cassis_ctx_fetch.sh*). These only talk to the network and do
+no heavy compute, so they are the only steps that need outside access. The single
+driver *cassis_fetch.sh* runs all three from the site config. The SPICE kernels are
+also downloaded here, once.
 
-**Tier 2, data processing.** This step is automated and creates the registered
-CaSSIS DEM. They are usually run on a remote multi-core machine.
+**Compute (no network).** Ingest the framelets to ISIS cubes, generate a CSM camera per
+framelet, blend the downloaded DTMs into the CTX reference DEM and its blurred mapproj
+DEM, then run the numbered stages (1 through 8) that produce the registered CaSSIS DEM.
+None of this needs the network; it is CPU and memory work for a compute node.
+
+Older documentation called the fetch-plus-prep group "Tier 1" and the numbered stages
+"Tier 2". That still holds, but the sharper line for running on a cluster is network
+versus compute: only the fetch steps need outside access, and everything else (including
+the ingest, camera, and CTX-blend prep) runs on a compute node.
+
+The published (prior vendor) CaSSIS DEM is downloaded only for optional comparison; it is
+not an input to the pipeline. A new site is processed without it (see "Processing a new
+site from scratch").
 
 ## Repository layout
 
@@ -76,6 +91,85 @@ refDem=ref/jezero_ctx/jezero_ctx_18m.tif             # CTX reference DEM
 mapprojDem=ref/jezero_ctx/jezero_ctx_18m_blur5.tif   # blurred CTX DEM
 ```
 
+## Processing a new site from scratch
+
+The sections below practice each step on the shipped Jezero sample, which already has its
+cubes, cameras, and CTX reference. This section is the end-to-end recipe for a brand-new
+CaSSIS stereo pair, with no prior vendor DEM. It just ties the per-step tools together in
+order; read the per-step sections for detail.
+
+Pick a stereo pair. From the ESA PSA (or an ODE search of CaSSIS stereo pairs) you get the
+orbit number and the observation footprint: its center latitude and east longitude, and
+its longitude/latitude bounding box. The two look ids are then discovered from the orbit:
+
+```bash
+cassis_find_looks.sh 4041      # -> "276712209 276712210" (left right), or discovered automatically below
+```
+
+Write a site config (for example *cassis_4041.conf*) in the work directory. Besides the
+usual *inputCassisDir*, *refDem*, *mapprojDem*, a from-scratch site also sets the geometry
+the CTX fetch needs, since there is no DEM yet to read it from:
+
+```bash
+orbit=4041
+inputCassisDir=data/MY34_004041_196
+clat=-14.6501                                             # footprint center latitude
+clon=175.6455                                             # footprint center east longitude
+footprintBbox=175.4850,-15.0365,175.8016,-14.2430         # minLon,minLat,maxLon,maxLat (east lon)
+refDem=ref/MY34_004041_196_ctx/MY34_004041_196_ctx_18m.tif
+mapprojDem=ref/MY34_004041_196_ctx/MY34_004041_196_ctx_18m_blur5.tif
+# Llook / Rlook are optional; if absent they are discovered from the orbit.
+```
+
+**Fetch (front-end / head node, network).** One command does look discovery, framelets,
+and the CTX DTMs:
+
+```bash
+cassis_fetch.sh cassis_4041.conf $(pwd)
+```
+
+The CTX fetch sizes its box as three times the footprint (the measured CaSSIS-to-CTX
+pointing offset is ~8 to 15 km, so three times covers it), using the footprint bbox
+directly: there is no DEM yet, so a tiny constant stand-in raster is synthesized over the
+bbox to define the extent. This is why the config carries *footprintBbox*. If the STAC
+query returns very few DTMs over the box, there is no usable controlled CTX at this site,
+so drop it before spending any compute. The STAC query and the downloads retry on
+transient network errors, so a passing 502 from the server does not abort the fetch.
+
+**Compute (compute node, no network).** Run these in order. Ingest needs the ISIS
+environment; the camera step, the CTX blend, and the stages all use the *usgscsm_cassis*
+environment (see Environment). On a cluster this is one batch job that activates each
+environment in turn and calls the pipeline tools; it adds no logic of its own.
+
+```bash
+# 1. framelets -> ISIS cubes (ISIS environment)
+cassis_ingest_cubes.sh $inputCassisDir
+# 2. one CSM camera per cube (usgscsm_cassis)
+cassis_make_cameras.sh $inputCassisDir
+# 3. CTX reference DEM + blurred mapproj DEM (usgscsm_cassis). TAG matches the refDem basename.
+cassis_ctx_blend.sh ref/MY34_004041_196_ctx MY34_004041_196 $clat $clon
+# 4. linescan DEM and its alignment to CTX (stages 1 to 2)
+cassis_process.sh cassis_4041.conf 1 2 site4041_out $(pwd)
+```
+
+**Inspect before going on.** Hillshade the aligned linescan DEM
+(*site4041_out/linescan/linescan_dem/align/aligned_oncoarse.tif*) and the CTX reference,
+on a shared extent. Confirm the CTX covers the footprint, the CaSSIS DEM shows real relief
+to lock onto (not flat or garbled), and the alignment residual is small. Drop the site if
+the CTX is too sparse over the footprint, the CaSSIS DEM is too flat or weird, or the
+alignment did not take. This is the triage the dz and disparity numbers cannot do for you,
+because they hide missing coverage.
+
+**Finish the DEM (compute node).** For a site that passed inspection, run the rest:
+
+```bash
+cassis_process.sh cassis_4041.conf 3 7 site4041_out $(pwd)
+```
+
+The delivered DEM is *site4041_out/frame/pass1_stereo/cassis_dem_on_ctx.tif*. Always
+compare its extent and coverage to the aligned linescan DEM and the CTX (see the
+evaluation tools), since a truncated framelet DEM scores well on dz while missing ground.
+
 ## Tier 1: data ingestion
 
 Run on a local machine, with network access and inspection. Each step below is
@@ -106,7 +200,17 @@ cassis_fetch_pair.sh 16378 $Llook $Rlook $inputCassisDir
 
 Here, 16378 is the orbit number, the middle field of the observation id
 MY36_016378_162. The observation id and its two look ids (*Llook* and *Rlook*) come
-from the ESA Planetary Science Archive when selecting a CaSSIS stereo pair.
+from the ESA Planetary Science Archive when selecting a CaSSIS stereo pair. The two look
+ids can also be discovered from the orbit alone (they are the consecutive pair in the
+orbit listing):
+
+```bash
+cassis_find_looks.sh 16378      # prints "Llook Rlook"
+```
+
+The *cassis_fetch.sh* driver uses this automatically when the config does not pin the
+looks, so a from-scratch site only needs the orbit (see "Processing a new site from
+scratch").
 
 Download the SPICE kernels
 ([Downloading the SPICE kernels](https://stereopipeline.readthedocs.io/en/latest/examples/cassis.html#cassis-kernels)).
@@ -169,10 +273,16 @@ CTX DTMs. Run it where there is outside network access:
 cassis_ctx_fetch.sh CTXDIR FOOTPRINT_DEM CLAT CLON
 ```
 
-FOOTPRINT_DEM is the DEM that defines the footprint (the linescan or vendor DEM).
-CLAT and CLON are the site center; for Jezero they are near latitude 18.4,
-longitude 77.5. This writes *box_te.txt*, *ctx_list.txt*, and the raw DTMs under
-*CTXDIR*/dl/. The box is *BOX_FACTOR* times the footprint (default 3).
+FOOTPRINT_DEM is the DEM that defines the footprint (the linescan or vendor DEM). For a
+new site there may be no such DEM yet (the linescan DEM needs the CTX, which this step is
+building), so FOOTPRINT_DEM may instead be a bounding box written as
+*bbox:minLon,minLat,maxLon,maxLat* (east longitudes). A tiny constant stand-in raster is
+then synthesized over that bbox and used as the footprint; only its extent matters. The
+bbox comes from the observation footprint (ODE / the PSA pair record). CLAT and CLON are
+the site center; for Jezero they are near latitude 18.4, longitude 77.5. This writes
+*box_te.txt*, *ctx_list.txt*, and the raw DTMs under *CTXDIR*/dl/. The box is *BOX_FACTOR*
+times the footprint (default 3). The STAC query and the downloads retry on transient
+network errors.
 
 **Process** warps the downloaded DTMs to the grid, crops to the box, culls the
 outlier DTMs, feather-blends the rest, and makes the blurred mapproj DEM. It is

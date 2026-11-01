@@ -233,7 +233,7 @@ align_ok() { awk -v h="${GDH:-999}" -v v="${GDV:-999}" 'BEGIN{h=(h<0?-h:h);v=(v<
 # and the old methods run. Methods 1 and 2 are kept as fall-through for any site NCC does not pass.
 echo "S5 METHOD 0: NCC global hillshade correlation (robust primary)"
 GDH=999; GDV=999; method="ncc"
-ned=$(python3 "$selfBin/cassis_ctx_ncc_align.py" "$coarse" "$demc" "${CTX_ALIGN_NCC_RES:-36}" "$al" 2>"$out/align_ncc.txt" | awk '/NED_TRANSLATION/{print $2, $3, $4}')
+ned=$(python3 "$BIN/cassis_ctx_ncc_align.py" "$coarse" "$demc" "${CTX_ALIGN_NCC_RES:-36}" "$al" 2>"$out/align_ncc.txt" | awk '/NED_TRANSLATION/{print $2, $3, $4}')
 if [ -n "$ned" ] && [ "$ned" != "0 0 0" ]; then
   echo "  NCC NED translation (N E D, m): $ned"
   pc_align --max-displacement -1 --num-iterations 0 --initial-ned-translation "$ned"             \
