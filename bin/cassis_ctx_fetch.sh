@@ -4,7 +4,7 @@
 # All CTX-reference work is two steps: FETCH then PROCESS. This is the FETCH step and must run on a machine
 # with network access (on pfe that is the HEAD NODE): it computes the box from the footprint, queries the
 # USGS STAC for the controlled CTX DTMs intersecting that box, and downloads them. It is light (a tiny warp
-# plus network), no heavy compute. The PROCESS step (warp, cull, feather, blur5) is cassis_ctx_blend.sh and
+# plus network), no heavy compute. The PROCESS step (warp, remove, feather, blur5) is cassis_ctx_blend.sh and
 # belongs on a compute node (qsub). The two share <ctxDir>.
 #
 # Writes under <ctxDir>:

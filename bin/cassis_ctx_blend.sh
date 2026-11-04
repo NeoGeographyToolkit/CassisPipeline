@@ -4,7 +4,7 @@
 # All CTX-reference work is two steps: FETCH then PROCESS. cassis_ctx_fetch.sh runs on the HEAD NODE (it
 # needs net access) to compute the box and download the DTMs. This script is the PROCESS step and belongs
 # on a COMPUTE NODE (qsub): it is heavy GDAL / dem_mosaic work. It warps each downloaded DTM to the grid,
-# crops to the box, culls outliers, feather-blends, and makes the blur5 mapproj DEM. Warps are cached as
+# crops to the box, removes outliers, feather-blends, and makes the blur5 mapproj DEM. Warps are cached as
 # dl/*_gw.tif, so re-running to try a different blend costs minutes (the warps are reused).
 #
 # Inputs expected under <ctxDir> (produced by cassis_ctx_fetch.sh):
@@ -18,10 +18,10 @@
 # Method (per the cassis-pipeline skill's canonical recipe):
 #   1. downsample each 18 m warp to sub-8 (144 m)
 #   2. dem_mosaic --median the sub-8 tiles -> a consensus surface
-#   3. geodiff each sub-8 tile vs the consensus; CULL a DTM if |mean| > 30 m OR stddev > 40 m (outlier).
-#      All-culled fallback: keep every warp.
+#   3. geodiff each sub-8 tile vs the consensus; REMOVE a DTM if |mean| > 30 m OR stddev > 40 m (outlier).
+#      All-removed fallback: keep every warp.
 #   4. dem_mosaic (DEFAULT = feathered weighted average, NOT --median) the SURVIVORS' full-res warps once.
-#      Median rejects outlier values but leaves hard tile SEAMS; feathering the already-culled survivors is
+#      Median rejects outlier values but leaves hard tile SEAMS; feathering the already-removed survivors is
 #      seamless AND keeps the consensus elevations. Crop to the box.
 #   5. hillshade + regenerate the blur5 mapprojDem from the new reference.
 #
@@ -73,14 +73,14 @@ dem_mosaic --threads "$threads" --median $sub8_tiles -o "$ctxDir/_sub8_median" >
 med_tif=$(ls "$ctxDir"/_sub8_median*.tif 2>/dev/null | head -1)
 [ -s "$med_tif" ] || { echo "ERROR failed to build sub-8 median"; exit 1; }
 
-echo "[ctx_blend] outlier cull vs consensus (|mean|>30 m or stddev>40 m)"
-surviving_gw=""; cull_count=0; keep_count=0
-mkdir -p "$ctxDir/cull_diff"
+echo "[ctx_blend] remove outliers vs consensus (|mean|>30 m or stddev>40 m)"
+surviving_gw=""; removed_count=0; keep_count=0
+mkdir -p "$ctxDir/outlier_diff"
 for s8 in "$ctxDir"/dl/*_sub8.tif; do
   base=$(basename "$s8" _sub8.tif)
   gw="$ctxDir/dl/${base}_gw.tif"
   [ -s "$gw" ] || continue
-  diff_out="$ctxDir/cull_diff/${base}"
+  diff_out="$ctxDir/outlier_diff/${base}"
   rm -f "${diff_out}"*
   # geodiff operates on the FIRST arg's domain: tile first, consensus last.
   geodiff --threads 1 "$s8" "$med_tif" -o "$diff_out" >/dev/null 2>&1 || true
@@ -92,14 +92,14 @@ for s8 in "$ctxDir"/dl/*_sub8.tif; do
     std=$(echo "$stats" | grep "STATISTICS_STDDEV=" | cut -d= -f2)
     if [ -n "$mean" ] && [ -n "$std" ]; then
       is_outlier=$(python3 -c "print(1 if (abs(float('$mean'))>30.0 or float('$std')>40.0) else 0)" 2>/dev/null || echo 0)
-      if [ "$is_outlier" -eq 1 ]; then echo "  CULL $base: mean=$mean std=$std"; keep=0; cull_count=$((cull_count+1)); fi
+      if [ "$is_outlier" -eq 1 ]; then echo "  REMOVE $base: mean=$mean std=$std"; keep=0; removed_count=$((removed_count+1)); fi
     fi
   fi
   [ "$keep" -eq 1 ] && { surviving_gw="$surviving_gw $gw"; keep_count=$((keep_count+1)); }
 done
-echo "[ctx_blend] kept $keep_count, culled $cull_count"
+echo "[ctx_blend] kept $keep_count, removed $removed_count"
 if [ "$keep_count" -lt 1 ]; then
-  echo "[ctx_blend] WARNING all tiles culled - falling back to all warps"
+  echo "[ctx_blend] WARNING all tiles removed - falling back to all warps"
   surviving_gw=$(ls "$ctxDir"/dl/*_gw.tif 2>/dev/null)
 fi
 

@@ -128,13 +128,10 @@ and the CTX DTMs:
 cassis_fetch.sh cassis_4041.conf $(pwd)
 ```
 
-The CTX fetch sizes its box as three times the footprint (the measured CaSSIS-to-CTX
-pointing offset is ~8 to 15 km, so three times covers it), using the footprint bbox
-directly: there is no DEM yet, so a tiny constant stand-in raster is synthesized over the
-bbox to define the extent. This is why the config carries *footprintBbox*. If the STAC
-query returns very few DTMs over the box, there is no usable controlled CTX at this site,
-so drop it before spending any compute. The STAC query and the downloads retry on
-transient network errors, so a passing 502 from the server does not abort the fetch.
+The CTX fetch sizes its box as three times the footprint and uses the *footprintBbox*
+directly (there is no DEM yet, so a constant stand-in raster defines the extent). If the
+STAC query returns very few DTMs over the box, there is no usable controlled CTX at this
+site, so drop it before spending any compute.
 
 **Compute (compute node, no network).** Run these in order. Ingest needs the ISIS
 environment; the camera step, the CTX blend, and the stages all use the *usgscsm_cassis*
@@ -284,7 +281,7 @@ the site center; for Jezero they are near latitude 18.4, longitude 77.5. This wr
 times the footprint (default 3). The STAC query and the downloads retry on transient
 network errors.
 
-**Process** warps the downloaded DTMs to the grid, crops to the box, culls the
+**Process** warps the downloaded DTMs to the grid, crops to the box, removes the
 outlier DTMs, feather-blends the rest, and makes the blurred mapproj DEM. It is
 heavy, so run it on a compute node (qsub):
 
@@ -292,14 +289,10 @@ heavy, so run it on a compute node (qsub):
 cassis_ctx_blend.sh CTXDIR TAG CLAT CLON
 ```
 
-How the overlapping DEMs are combined matters. A plain first-valid or median stack
-leaves visible tile seams in the reference, and those seams then show up as
-artifacts in the dz difference. So the blend first culls outlier DTMs at a coarse
-144 m resolution against their median, then does a single full-resolution feathered
-blend of the survivors, which is seamless while keeping the consensus elevations.
-The warps are cached, so re-running the blend to try a different combination costs
-minutes. The blurred mapproj DEM is always regenerated from the current reference,
-so it never lags behind a rebuilt reference and silently drops framelets.
+The blend removes outlier DTMs then feather-blends the survivors into a seamless
+reference, and regenerates the blurred mapproj DEM from it (so it never lags a
+rebuilt reference). Cached warps make a re-blend cheap. The method and the reasons
+it is done this way are in the *cassis_ctx_blend.sh* header.
 
 This step needs attention, as some sites may lack good prior CTX coverage. Check
 that both the reference DEM and the mapproj DEM were produced, then set *refDem*

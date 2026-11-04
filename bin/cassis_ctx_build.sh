@@ -139,11 +139,11 @@ if [ "${CTX_STACK:-blend}" = "vrt" ]; then
   gdalbuildvrt -overwrite "$OUTDIR/_vrt.vrt" "${keepC[@]}" >/dev/null 2>&1
   gdalwarp -q -overwrite -te $TE0 $TE1 $TE2 $TE3 -tr $TRC $TRC -r near -co COMPRESS=LZW "$OUTDIR/_vrt.vrt" "$OUTDIR/${TAG}_ctx_18m.tif" >/dev/null 2>&1
 elif [ "${CTX_STACK:-blend}" = "sub8" ]; then
-  # CANONICAL ROBUST blend (the proven winner from the 2026-10-30 vendor-free campaigns): cull outlier
+  # CANONICAL ROBUST blend (the proven winner from the 2026-10-30 vendor-free campaigns): remove outlier
   # tiles CHEAPLY at SUB-8 (144 m) vs a median consensus, then ONE full-res FEATHERED dem_mosaic of the
-  # survivors. Fast (geodiff on 64x-smaller rasters), hole-free (cull only true outliers), smooth (one
+  # survivors. Fast (geodiff on 64x-smaller rasters), hole-free (remove only true outliers), smooth (one
   # full-res feather, not a per-pixel median). keepC are the native-extent 18 m warps.
-  echo "[sub8] CTX_STACK=sub8: sub-8 (144 m) median-cull + full-res feather blend ($(date))"
+  echo "[sub8] CTX_STACK=sub8: sub-8 (144 m) median-remove + full-res feather blend ($(date))"
   sub8=(); declare -A S2F
   for c in "${keepC[@]}"; do
     s="${c%.tif}_s8.tif"
@@ -156,11 +156,11 @@ elif [ "${CTX_STACK:-blend}" = "sub8" ]; then
   if [ -n "$med" ]; then
     for s in "${sub8[@]}"; do
       read mn sd vp <<<"$(gd_stats "$s" "$med")"
-      cull=$(python3 -c "m=abs(float('${mn:-0}' or 0)); s=float('${sd:-0}' or 0); print(1 if (m>30 or s>40) else 0)")
-      if [ "$cull" = 1 ]; then echo "  SUB8-CULL $(basename "${S2F[$s]}") mean=$mn std=$sd"; else surv+=( "${S2F[$s]}" ); fi
+      remove=$(python3 -c "m=abs(float('${mn:-0}' or 0)); s=float('${sd:-0}' or 0); print(1 if (m>30 or s>40) else 0)")
+      if [ "$remove" = 1 ]; then echo "  SUB8-REMOVE $(basename "${S2F[$s]}") mean=$mn std=$sd"; else surv+=( "${S2F[$s]}" ); fi
     done
   fi
-  [ "${#surv[@]}" -ge 2 ] || surv=( "${keepC[@]}" )   # all-culled fallback: keep everything
+  [ "${#surv[@]}" -ge 2 ] || surv=( "${keepC[@]}" )   # all-removed fallback: keep everything
   echo "  sub8 survivors: ${#surv[@]} of ${#keepC[@]}"
   rm -f "$OUTDIR"/_blend*.tif
   dem_mosaic --threads ${CTX_THREADS:-20} "${surv[@]}" -o "$OUTDIR/_blend" >/dev/null 2>&1

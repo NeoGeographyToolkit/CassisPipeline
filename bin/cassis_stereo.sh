@@ -220,6 +220,11 @@ PY
   Td=2; cores=${CASSIS_NPROC:-$(nproc 2>/dev/null || echo 4)}
   [ -n "$PBS_JOBID" ] && [ -r "$PBS_NODEFILE" ] && cores=$(wc -l < "$PBS_NODEFILE")
   case "$cores" in ''|*[!0-9]*) cores=28 ;; esac
+  # Cap the per-pair-stereo fan-out basis. A big node (e.g. a 512-core Turin) would otherwise spawn cores/Td
+  # parallel stereo jobs, each sizing its own GDAL/TBB thread pool to the node cores -> massive
+  # oversubscription (seen 2026-11-03: ncpus=128 ran ~5x slower than the 28-core reproc). ~32 keeps the
+  # fan-out at the proven level; override with CASSIS_NPROC / CASSIS_MAX_JOBS when you really want more.
+  [ "$cores" -gt 32 ] && [ -z "$CASSIS_NPROC" ] && cores=32
   Kd=$(( cores / Td )); [ "$Kd" -lt 1 ] && Kd=1; [ "$Kd" -gt 128 ] && Kd=128
   # Gentle cap for a weak workstation (see CASSIS_MAX_JOBS in DEM mode); unset =
   # cluster default.
@@ -267,9 +272,10 @@ if [ -n "$PBS_JOBID" ]; then
   if [ -n "$CASSIS_NPROC" ]; then cores=$CASSIS_NPROC; else
     cores=$( { [ -r "$PBS_NODEFILE" ] && wc -l < "$PBS_NODEFILE"; } 2>/dev/null || nproc 2>/dev/null ); fi
   case "$cores" in ''|*[!0-9]*) cores=28 ;; esac
+  [ "$cores" -gt 32 ] && [ -z "$CASSIS_NPROC" ] && cores=32   # cap the fan-out basis; see the dense-mode note above
   K=$(( cores / T ))
 else
-  cores=${CASSIS_NPROC:-$(nproc 2>/dev/null || echo 4)}; K=$(( cores / T ))
+  cores=${CASSIS_NPROC:-$(nproc 2>/dev/null || echo 4)}; [ "$cores" -gt 32 ] && [ -z "$CASSIS_NPROC" ] && cores=32; K=$(( cores / T ))
 fi
 [ "$K" -lt 1 ] && K=1; [ "$K" -gt 128 ] && K=128
 # CASSIS_MAX_JOBS optionally caps the per-pair stereo fan-out (unset = cluster
