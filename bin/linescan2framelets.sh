@@ -53,6 +53,48 @@ PY
   isds=$(for c in $cubes; do echo ${c%.cub}.json; done)
   echo "[aligned_framelets $look $sid] $nc valid framelet cubes"
 
+  if [ "${refitBeforeLinescan:-no}" = yes ]; then
+    # REORDER: the base frame states are the TRANSVERSE refit frame cams built up front
+    # (refit_frame_cams.sh). We keep their transverse distortion and overwrite the pose
+    # with the aligned linescan node, so the aligned framelets carry the refit lens + the
+    # CTX-aligned pose. No 0-iter BA (the refit cams already exist). Order-based node
+    # mapping (robust to archive index gaps), matching linescan_refit_lens.py.
+    basedir=$outDir/frame/refit_frame_cams_prelink
+    echo "[aligned_framelets $look $sid] refitBeforeLinescan=yes: pose-swap TRANSVERSE refit frame cams"
+    ls "$basedir"/*-${sid}-*-0__4_0.json >/dev/null 2>&1 || { echo "ERROR missing refit frame cams under $basedir (run the stage-1 reorder first)"; exit 1; }
+    python3 - "$state" "$out" "$sid" "$basedir" <<'PY'
+import json, glob, re, sys
+state_file, out, sid, basedir = sys.argv[1:5]
+def load(f):
+    t=open(f).read()
+    try: return json.loads(t), False
+    except: return json.loads(t.split('\n',1)[1]), True
+ln,_ = load(state_file)
+pos = ln['m_positions']; quat = ln['m_quaternions']
+nnodes = len(pos)//3
+cams = glob.glob(f'{basedir}/*-{sid}-*-0__4_0.json')
+cams = [c for c in cams if not c.endswith('.adjusted_state.json') and not c.endswith('.camgen.log')]
+idxof = lambda f: int(re.search(rf'-{sid}-(\d+)-0__4_0', f).group(1))
+cams = sorted(cams, key=idxof)
+n = 0
+for j, cf in enumerate(cams):
+    if j >= nnodes:
+        print(f"  WARN more refit cams ({len(cams)}) than nodes ({nnodes}); extra ignored"); break
+    st, hashdr = load(cf)
+    st['m_currentParameterValue'][0:3] = pos[3*j:3*j+3]
+    st['m_currentParameterValue'][3:7] = quat[4*j:4*j+4]
+    stem = re.sub(r'\.json$', '', cf.split('/')[-1])
+    aligned = f'{out}/aligned-{stem}.json'
+    with open(aligned, 'w') as f:
+        if hashdr: f.write(st['m_modelName'] + '\n')
+        json.dump(st, f)
+    n += 1
+print(f"  wrote {n} aligned framelet states for {sid} (order-based, {nnodes} nodes, {len(cams)} refit cams)")
+PY
+    echo "aligned framelet states: $(ls $out/aligned-*.json 2>/dev/null | wc -l | tr -d ' ')"
+    continue
+  fi
+
   echo "[aligned_framelets] 0-iter BA: framelet cubes -> raw frame CSM states"
   bundle_adjust $cubes $isds --inline-adjustments --num-iterations 0 \
     --overlap-limit 1 --min-matches 0 --ip-per-image 500 -o $out/raw \

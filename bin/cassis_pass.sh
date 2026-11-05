@@ -54,7 +54,21 @@ boot=$G/boot
 bash cassis_corr.sh "$linescanDem" "$refDem" "$corrRes" "$corrSearch" "$boot" 15 \
   || { echo "STAGE_FAIL boot corr"; exit 1; }
 gcp0=$G/dem2gcp/gcp0.gcp
-bash gen_gcp.sh "$boot/warped_${corrRes}m.tif" "$boot/ctx_${corrRes}m.tif" "$boot/run-F.tif" \
+# OPT-IN texture-quality filter (default off): on featureless terrain the hillshade boot
+# correlation is unreliable (small-but-wrong disparity, invisible to a max-disp magnitude
+# filter), and the hard fixed-GCP drags those framelets. When gcpTextureMin is set, mask the
+# boot disparity where the local linescan-hillshade std is below it, so dem2gcp places no
+# control on featureless ground and the dense same-look ties keep continuity instead.
+bootDisp=$boot/run-F.tif
+if [ -n "${gcpTextureMin:-}" ] && [ "${gcpTextureMin}" != no ] && [ "${gcpTextureMin}" != 0 ]; then
+  echo "  gcpTextureMin=$gcpTextureMin (win ${gcpTextureWin:-15}): mask low-texture boot disparity before dem2gcp"
+  if python3 "$selfBin/gcp_texture_mask.py" "$boot/run-F.tif" "$boot/warped_hill.tif" "${gcpTextureWin:-15}" "$gcpTextureMin" "$boot/run-F-texmask.tif"; then
+    bootDisp=$boot/run-F-texmask.tif
+  else
+    echo "  WARN texture mask failed; using unmasked disparity"
+  fi
+fi
+bash gen_gcp.sh "$boot/warped_${corrRes}m.tif" "$boot/ctx_${corrRes}m.tif" "$bootDisp" \
   "$img" "$cam" "$matchpfx" "$maxDisp" "$gcp0" "$gcpSigma" "$maxGcp" || { echo "STAGE_FAIL boot gcp"; exit 1; }
 echo "  GCP0: $gcp0 ($(grep -vc '^#' "$gcp0" 2>/dev/null) pts)"
 

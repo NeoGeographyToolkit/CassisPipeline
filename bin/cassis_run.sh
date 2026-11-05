@@ -33,6 +33,11 @@ pass2Gcp=${pass2Gcp:-no_gcp}
 # TIC GCP mode (cassis_pass.sh stage 2): yes = --fix-gcp-xyz (hard, gcpSigma ignored); no = float GCP
 # (soft, gcpSigma weights). Default yes (unchanged). Exported so the cassis_pass.sh child inherits it.
 export ticFixGcp=${ticFixGcp:-yes}
+# OPT-IN texture-quality GCP filter (cassis_pass.sh boot GCP0): gcpTextureMin = minimum local
+# linescan-hillshade std to keep a boot-disparity GCP (default empty/off = shipped behavior).
+# gcpTextureWin = the window in px. Exported so cassis_pass.sh inherits them.
+export gcpTextureMin=${gcpTextureMin:-}
+export gcpTextureWin=${gcpTextureWin:-15}
 # linescanDem and startCamDir are derived from outDir by convention (a config may
 # override).
 startCamDir=${startCamDir:-$outDir/frame/distortion_corrected_cassis_cams}

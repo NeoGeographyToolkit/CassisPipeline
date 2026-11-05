@@ -148,6 +148,20 @@ if want 4; then
   stage_hdr 4 "refit lens -> transverse"; t=$(date +%s)
   n4=$(ls "$refitCamDir"/*.json 2>/dev/null | wc -l | tr -d ' ')
   if [ "${n4:-0}" -ge 2 ]; then echo "  registered_cassis_cams has $n4 cams - skip";
+  elif [ "${refitBeforeLinescan:-no}" = yes ]; then
+    # REORDER: the aligned framelets (stage 3) already carry the transverse lens (it was
+    # injected into the linescan up front), so there is nothing to refit. Gather them into
+    # the flat registered_cassis_cams dir that stages 6-7 expect (strip the aligned- prefix).
+    echo "  refitBeforeLinescan=yes: gather aligned framelets (already transverse) into registered_cassis_cams"
+    mkdir -p "$refitCamDir"
+    for af in "$outDir"/frame/aligned_framelets/*/aligned-*.json; do
+      [ -e "$af" ] || continue
+      stem=$(basename "$af" .json); stem=${stem#aligned-}
+      cp -f "$af" "$refitCamDir/$stem.json"
+    done
+    n4=$(ls "$refitCamDir"/*.json 2>/dev/null | wc -l | tr -d ' ')
+    echo "  gathered $n4 transverse framelet cams into $refitCamDir"
+    [ "${n4:-0}" -ge 2 ] || { echo "STAGE4_FAIL too few gathered cams ($n4) - did stage 3 reorder run?"; exit 1; }
   else bash "$selfBin/refit_transverse.sh" "$cfg" "$outDir" "$B" || { echo "STAGE4_FAIL refit"; exit 1; }; fi
   stage_done 4 "refit transverse" "$t"
 fi
@@ -160,6 +174,16 @@ if want 5; then
   nref=$(ls "$refitCamDir"/*.json 2>/dev/null | wc -l | tr -d ' ')
   [ "${nref:-0}" -ge 2 ] || { echo "STAGE5_FAIL too few refit cams ($nref) in $refitCamDir"; exit 1; }
   mkdir -p "$startCamDir"
+  if [ "${refitBeforeLinescan:-no}" = yes ]; then
+    # REORDER: the pose refit for the transverse lens was done up front (in the linescan),
+    # so the registered_cassis_cams are already the start cameras. Gather them.
+    echo "  refitBeforeLinescan=yes: pose refit already applied up front; gather registered cams into startCamDir"
+    done5=0
+    for cam in "$refitCamDir"/*.json; do
+      [ -e "$cam" ] || continue
+      cp -f "$cam" "$startCamDir/$(basename "$cam")"
+    done
+  else
   # core count: prefer $PBS_NODEFILE (bare nproc can return 1 inside a PBS job), then
   # nproc --all.
   NCORE=$( { [ -r "$PBS_NODEFILE" ] && wc -l < "$PBS_NODEFILE"; } 2>/dev/null || nproc --all 2>/dev/null || echo 28 )
@@ -183,6 +207,7 @@ if want 5; then
     i=$((i+1)); [ $((i % K)) -eq 0 ] && wait
   done
   wait; set -e
+  fi
   n5=$(ls "$startCamDir"/*.json 2>/dev/null | wc -l | tr -d ' ')
   echo "  start cams now: $n5 of $nref (already-done skipped: $done5)"
   [ "${n5:-0}" -ge 2 ] || { echo "STAGE5_FAIL too few start cams ($n5)"; exit 1; }

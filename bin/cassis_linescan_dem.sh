@@ -83,7 +83,37 @@ for f in "$Ls" "$Rs" "$Lisd" "$Risd"; do [ -s "$f" ] || { echo "ERROR missing $f
 out=$work/linescan_dem; mkdir -p "$out/ba" "$out/stereo" "$out/align"
 seed=$coarse   # all coarse: seed = coarse ctx
 
-# S3: BA tie (L+R linescan, inline)
+# REORDER (opt-in): refitBeforeLinescan=yes builds the linescan from the REFIT cameras
+# (optimized transverse lens + refit pose) instead of the vendor CaSSIS lens, so the
+# linescan, its CTX registration, and the stage-7 GCP all use the refit cameras. The late
+# refit (stages 4-5) is then skipped. Default no = the shipped pipeline, byte-unchanged.
+# Mechanism (proven): cam_gen refit is frame-only, so refit each framelet FRAME camera
+# (refit_frame_cams.sh), then inject the transverse lens + the refit poses into the
+# linescan states (linescan_refit_lens.py, a conversion-free CSM-state copy). The tie BA
+# below then ties the two refit looks, preserving the L-R tie on the refit lens.
+Lcam=$Lisd; Rcam=$Risd
+if [ "${refitBeforeLinescan:-no}" = yes ]; then
+  echo "S3pre refitBeforeLinescan=yes: build refit frame cams + inject transverse lens into linescan states"
+  bash "$BIN/refit_frame_cams.sh" "$cfg" "$outDir" "$B" || { echo "REFIT_FRAME_CAMS FAILED"; exit 1; }
+  refitDir=$outDir/frame/refit_frame_cams_prelink
+  mkdir -p "$out/cassis_ls" "$out/refit_ls"
+  Lcstate=$out/cassis_ls/run-$(basename ${Lisd%.json}).adjusted_state.json
+  Rcstate=$out/cassis_ls/run-$(basename ${Risd%.json}).adjusted_state.json
+  if [ ! -s "$Lcstate" ] || [ ! -s "$Rcstate" ]; then
+    echo "S3pre 0-iter BA: linescan ISDs -> cassis linescan states"
+    bundle_adjust "$Ls" "$Rs" "$Lisd" "$Risd" --inline-adjustments --num-iterations 0 \
+      --overlap-limit 1 --min-matches 0 --ip-per-image 100 -o "$out/cassis_ls/run"    \
+      > "$out/cassis_ls/ba0_log.txt" 2>&1 || { echo "S3pre ISD->state BA FAILED"; tail -15 "$out/cassis_ls/ba0_log.txt"; exit 1; }
+  fi
+  python3 "$BIN/linescan_refit_lens.py" "$Lcstate" "$refitDir" "$sidL" "$out/refit_ls/$(basename ${Lisd%.json}).json" || { echo "S3pre inject L FAILED"; exit 1; }
+  python3 "$BIN/linescan_refit_lens.py" "$Rcstate" "$refitDir" "$sidR" "$out/refit_ls/$(basename ${Risd%.json}).json" || { echo "S3pre inject R FAILED"; exit 1; }
+  Lcam=$out/refit_ls/$(basename ${Lisd%.json}).json
+  Rcam=$out/refit_ls/$(basename ${Risd%.json}).json
+fi
+
+# S3: BA tie (L+R linescan, inline). The camera inputs are the vendor ISDs by default, or
+# the injected refit linescan states when refitBeforeLinescan=yes (their basenames match
+# the ISD basenames, so the output state names - and all downstream names - are unchanged).
 bap=$out/ba/run
 Lc=$bap-$(basename ${Lisd%.json}).adjusted_state.json
 Rc=$bap-$(basename ${Risd%.json}).adjusted_state.json
@@ -91,7 +121,7 @@ if [ -s "$Lc" ] && [ -s "$Rc" ]; then
   echo "S3 BA states present, skip"
 else
   echo "S3 bundle_adjust --inline-adjustments (tie L+R linescan)"
-  bundle_adjust "$Ls" "$Rs" "$Lisd" "$Risd" --inline-adjustments --datum D_MARS \
+  bundle_adjust "$Ls" "$Rs" "$Lcam" "$Rcam" --inline-adjustments --datum D_MARS \
     --ip-detect-method 1 --ip-per-image 50000 --threads 6                       \
     --remove-outliers-params "75 100 50 50"                                     \
     --num-iterations 100 --robust-threshold 2                                   \
