@@ -58,10 +58,16 @@ bash gen_gcp.sh "$boot/warped_${corrRes}m.tif" "$boot/ctx_${corrRes}m.tif" "$boo
   "$img" "$cam" "$matchpfx" "$maxDisp" "$gcp0" "$gcpSigma" "$maxGcp" || { echo "STAGE_FAIL boot gcp"; exit 1; }
 echo "  GCP0: $gcp0 ($(grep -vc '^#' "$gcp0" 2>/dev/null) pts)"
 
-# stage 2: tic first joint BA, fix-gcp GCP0 (from the start cams), horizontal anchor
-echo "[2/6] TIC BA fix-gcp $(date)"
+# stage 2: tic first joint BA, GCP0 (from the start cams), horizontal anchor.
+# ticFixGcp (env/config, default yes): yes = --fix-gcp-xyz, the GCP xyz are held FIXED and the cameras are
+# pulled hard to them (the GCP *position* sigma is then ignored, so gcpSigma does nothing). no = the GCP
+# FLOAT, pulled toward their dem2gcp positions with weight set by gcpSigma - a SOFT anchor, so gcpSigma is
+# the real knob and the dense tie-matches keep continuity. Use no + a larger gcpSigma when a hard fix-gcp is
+# infeasible (noisy/biased linescan->CTX GCP0 over high-relief terrain breaks framelet continuity).
+ticFixGcp=${ticFixGcp:-yes}
+echo "[2/6] TIC BA gcp (fix-gcp-xyz=$ticFixGcp, gcpSigma=$gcpSigma) $(date)"
 bash cassis_ba.sh "$outDir" "${outTag}_tic" "$img" "$cam" "$refDem" "$matchpfx" \
-  "$htUncLoose" "$camPosUnc" "$gcp0" yes "$robust" no_intr_float "$B" || { echo "STAGE_FAIL tic"; exit 1; }
+  "$htUncLoose" "$camPosUnc" "$gcp0" "$ticFixGcp" "$robust" no_intr_float "$B" || { echo "STAGE_FAIL tic"; exit 1; }
 ticImg=$outDir/frame/${outTag}_tic/run-image_list.txt; ticCam=$outDir/frame/${outTag}_tic/run-camera_list.txt
 [ -s "$ticImg" ] && [ -s "$ticCam" ] || { echo "STAGE_FAIL tic produced no lists"; exit 1; }
 

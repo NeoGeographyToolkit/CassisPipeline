@@ -30,6 +30,9 @@ cassis_require bundle_adjust parallel_stereo point2dem mapproject dem_mosaic geo
 matchpfx=${matchpfx:-$outDir/frame/dense/matches/run-disp}   # uniform; a config may override
 # pass2 toc gcp mode: no_gcp default; soft_gcp is a general off-by-default option
 pass2Gcp=${pass2Gcp:-no_gcp}
+# TIC GCP mode (cassis_pass.sh stage 2): yes = --fix-gcp-xyz (hard, gcpSigma ignored); no = float GCP
+# (soft, gcpSigma weights). Default yes (unchanged). Exported so the cassis_pass.sh child inherits it.
+export ticFixGcp=${ticFixGcp:-yes}
 # linescanDem and startCamDir are derived from outDir by convention (a config may
 # override).
 startCamDir=${startCamDir:-$outDir/frame/distortion_corrected_cassis_cams}

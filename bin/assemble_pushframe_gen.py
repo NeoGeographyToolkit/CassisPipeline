@@ -38,6 +38,13 @@ idx = lambda f: int(re.search(rf'-{sid}-(\d+)-0__4_0', f).group(1))
 files = sorted(files, key=idx)
 isds = [json.load(open(f)) for f in files]
 n = len(isds)
+# Size the strip model by the along-track INDEX SPAN, not the present-framelet count: a missing framelet
+# (archive dropout -> index gap, e.g. ...24, 26...) still occupies its along-track slot. nslots counts those
+# gap slots so image_lines and the interframe delay match stack_strip_gen.py, which inserts nodata rows for
+# the gaps. (With no gaps, nslots == n and this is identical to the old behavior.)
+idxs = [idx(f) for f in files]
+nslots = idxs[-1] - idxs[0] + 1
+ngap = nslots - n
 base = copy.deepcopy(isds[0])
 orig_fh = isds[0]['image_lines']                 # original framelet height (280)
 fh = keep
@@ -49,9 +56,9 @@ if 'sun_position' in base:
     base['sun_position']    = merge_table(base['sun_position'],        isds, 'sun_position',        ['positions','velocities'])
 times = [d['center_ephemeris_time'] for d in isds]
 exposure = isds[0].get('exposure_duration', 0.001574)
-interframe = (times[-1] - times[0]) / (n - 1)
+interframe = (times[-1] - times[0]) / (nslots - 1)   # per along-track slot (counts gap slots)
 base['name_model']              = 'USGS_ASTRO_PUSH_FRAME_SENSOR_MODEL'
-base['image_lines']             = fh * n
+base['image_lines']             = fh * nslots
 base['framelet_height']         = fh
 base['interframe_delay']        = interframe
 base['exposure_duration']       = exposure
@@ -62,10 +69,10 @@ base['framelet_order_reversed'] = bool(reverse)
 # origin; carry it so the off-axis CASSIS distortion is evaluated correctly.
 base['starting_detector_line']  = isds[0].get('starting_detector_line', 0) + trim_top
 base['starting_ephemeris_time'] = times[0] - 0.5 * exposure
-base['center_ephemeris_time']   = times[0] + (n - 1) / 2.0 * interframe
+base['center_ephemeris_time']   = times[0] + (nslots - 1) / 2.0 * interframe
 base['ending_ephemeris_time']   = times[-1] + 0.5 * exposure
 json.dump(base, open(out, 'w'), indent=2)
-print(f"{out}: {n} framelets, image_lines={base['image_lines']}, fh={fh}, "
+print(f"{out}: {n} framelets ({ngap} missing, {nslots} slots), image_lines={base['image_lines']}, fh={fh}, "
       f"order_reversed={bool(reverse)}, interframe={interframe:.5f}s, "
       f"start_det_line={base['starting_detector_line']}, "
       f"traj pos={len(base['instrument_position']['ephemeris_times'])}")

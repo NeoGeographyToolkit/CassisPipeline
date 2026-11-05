@@ -80,17 +80,40 @@ for sid in (sid1, sid2):
                  f"The framelets lack detectable along-track texture to stack into a continuous strip; this "
                  f"pair is almost certainly too low-texture for stereo. Drop it, or inspect the framelets.")
     reverse = (sign < 0)
-    fs_ordered = list(reversed(fs)) if reverse else fs
-    arrs = []
-    for f in fs_ordered:
+    # Place framelets by their ALONG-TRACK INDEX, not by present-count. The archive can be missing a
+    # framelet (a dropout leaves an index gap, e.g. ...24, 26...); stacking the present framelets adjacently
+    # would put framelet 26 where 25 belongs, so the terrain JUMPS by one framelet height at the gap - a
+    # seam that corrupts the strip (and the stereo DEM) below it. Instead, insert KEEP rows of nodata (0,
+    # the strip background) for each missing framelet so every framelet lands at its true position. The
+    # pose model (assemble_pushframe_gen.py) sizes itself the same way (by index span), so image rows and
+    # trajectory times stay aligned across the gap.
+    fidx = lambda f: int(re.search(rf'-{sid}-(\d+)-0__4_0', f).group(1))
+    seq = sorted(((fidx(f), f) for f in fs), reverse=reverse)
+    arrs = []; prev = None; ngap = 0; Wd = None
+    for i, f in seq:
         a = gdal.Open(f).ReadAsArray()
+        if Wd is None: Wd = a.shape[1]
         t = (a.shape[0] - keep) // 2
+        if prev is not None:
+            g = abs(i - prev) - 1   # missing framelets between this one and the previous
+            if g > 0:
+                arrs.append(np.zeros((g * keep, Wd), dtype=a.dtype)); ngap += g
         arrs.append(a[t:t+keep, :])
+        prev = i
     strip = np.vstack(arrs)
+    if ngap:
+        print(f"  NOTE: look {sid} has {ngap} MISSING framelet(s) (index gaps); inserted nodata so the "
+              f"strip geometry stays correct (no seam).")
     out = f'{out_dir}/{sid}_strip.tif'
     drv = gdal.GetDriverByName('GTiff')
     ds = drv.Create(out, strip.shape[1], strip.shape[0], 1, gdal.GDT_Float32)
-    ds.GetRasterBand(1).WriteArray(strip); ds = None
+    ds.GetRasterBand(1).WriteArray(strip)
+    # When a dropout gap was filled with 0, mark 0 as NODATA so stereo/bundle_adjust ignore the gap band
+    # (its hard 0-edges would otherwise spawn spurious interest points and starve the real matches on a
+    # low-texture pair). Only set it when there IS a gap, so gap-free strips stay byte-identical to before.
+    if ngap:
+        ds.GetRasterBand(1).SetNoDataValue(0)
+    ds = None
     print(f"{sid}: advance {sign*mag} -> {'REVERSE' if reverse else 'TIME'} order, "
           f"KEEP={keep}, {len(fs)} framelets -> {strip.shape[1]}x{strip.shape[0]}  {out}")
 print(f"KEEP={keep}")
