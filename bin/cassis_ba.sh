@@ -37,7 +37,12 @@ if [ "$gcp" != no_gcp ]; then
   [ -s "$gcp" ] || { echo "ERROR missing gcp $gcp"; exit 1; }
   gcpPos="$gcp"; gcpOpt="--max-gcp-reproj-err 100"
   [ "$fixgcp" = yes ] && gcpOpt="$gcpOpt --fix-gcp-xyz"
-  echo "GCP: $gcp ($(grep -vc '^#' "$gcp") points) fix-gcp-xyz=$fixgcp"
+  # OPT-IN robust cost on the GCP residuals (default off). With a floated GCP (fixgcp=no),
+  # this attenuates (does not clip) GCP points whose residual is large in gcp-sigma units,
+  # so a noisy or wrong boot GCP over featureless ground is down-weighted while consistent
+  # control still pulls. Set gcpRobust (env, from the config) to enable, e.g. 4.
+  [ -n "${gcpRobust:-}" ] && [ "${gcpRobust}" != no ] && gcpOpt="$gcpOpt --gcp-robust-threshold $gcpRobust"
+  echo "GCP: $gcp ($(grep -vc '^#' "$gcp") points) fix-gcp-xyz=$fixgcp gcp-robust-threshold=${gcpRobust:-none}"
 fi
 
 # Intrinsics: fixed by default; yes_intr_float floats distortion only, shared across

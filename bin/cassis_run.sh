@@ -38,6 +38,9 @@ export ticFixGcp=${ticFixGcp:-yes}
 # gcpTextureWin = the window in px. Exported so cassis_pass.sh inherits them.
 export gcpTextureMin=${gcpTextureMin:-}
 export gcpTextureWin=${gcpTextureWin:-15}
+# OPT-IN robust cost on the floated-GCP residuals (cassis_ba.sh tic): gcpRobust attenuates
+# noisy/wrong boot GCPs (default empty/off). Meaningful with ticFixGcp=no. Exported for the child.
+export gcpRobust=${gcpRobust:-}
 # linescanDem and startCamDir are derived from outDir by convention (a config may
 # override).
 startCamDir=${startCamDir:-$outDir/frame/distortion_corrected_cassis_cams}
