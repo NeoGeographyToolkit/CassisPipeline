@@ -41,6 +41,11 @@ export gcpTextureWin=${gcpTextureWin:-15}
 # OPT-IN robust cost on the floated-GCP residuals (cassis_ba.sh tic): gcpRobust attenuates
 # noisy/wrong boot GCPs (default empty/off). Meaningful with ticFixGcp=no. Exported for the child.
 export gcpRobust=${gcpRobust:-}
+# OPT-IN ticNoGcp=yes (default no): the tic stage uses NO ground control (ties + htdem only).
+export ticNoGcp=${ticNoGcp:-no}
+# OPT-IN heights-from-dem robust threshold (cassis_ba.sh), default 0.1 (shipped). Loosen (large value)
+# to let the CTX heights-from-dem hold low-texture terrain instead of being robust-rejected there.
+export htdemRobust=${htdemRobust:-0.1}
 # linescanDem and startCamDir are derived from outDir by convention (a config may
 # override).
 startCamDir=${startCamDir:-$outDir/frame/distortion_corrected_cassis_cams}

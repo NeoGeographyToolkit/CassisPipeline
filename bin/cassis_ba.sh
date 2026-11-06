@@ -17,6 +17,12 @@ outDir=${1:?outDir}; outTag=${2:?outTag}; imgList=${3:?imgList}; camList=${4:?ca
 refDem=${5:?refDem}; matchpfx=${6:?matchpfx}; htUnc=${7:?htUnc}; camPosUnc=${8:?camPosUnc}
 gcp=${9:?gcp (.gcp path, or "no_gcp")}; fixgcp=${10:?fixgcp (yes|no)}; robust=${11:?robust}
 intrFloat=${12:?intrFloat (yes_intr_float|no_intr_float)}; B=${13:?B (cd target, LAST)}
+# Optional env-var knobs (passed by the caller via the config; see cassis_run.sh). Resolve
+# their defaults ONCE here, up front, so the use sites below read a plain variable:
+#   htdemRobust - heights-from-dem robust threshold (default 0.1, the shipped value)
+#   gcpRobust   - robust cost on the floated-GCP residuals (empty = off)
+htdemRobust=${htdemRobust:-0.1}
+gcpRobust=${gcpRobust:-}
 # ASP/ISIS tools on PATH and environment are set up by the caller. See the README.
 cd "$B" || { echo "ERROR cannot cd $B"; exit 1; }
 out=$outDir/frame/$outTag; mkdir -p "$out"
@@ -41,7 +47,7 @@ if [ "$gcp" != no_gcp ]; then
   # this attenuates (does not clip) GCP points whose residual is large in gcp-sigma units,
   # so a noisy or wrong boot GCP over featureless ground is down-weighted while consistent
   # control still pulls. Set gcpRobust (env, from the config) to enable, e.g. 4.
-  [ -n "${gcpRobust:-}" ] && [ "${gcpRobust}" != no ] && gcpOpt="$gcpOpt --gcp-robust-threshold $gcpRobust"
+  [ -n "$gcpRobust" ] && [ "$gcpRobust" != no ] && gcpOpt="$gcpOpt --gcp-robust-threshold $gcpRobust"
   echo "GCP: $gcp ($(grep -vc '^#' "$gcp") points) fix-gcp-xyz=$fixgcp gcp-robust-threshold=${gcpRobust:-none}"
 fi
 
@@ -60,26 +66,26 @@ fi
 echo "robust-threshold=$robust"
 
 # Joint BA: htdem pin to CTX, poses on a leash, distortion fixed or floated per intrFloat.
-bundle_adjust                                \
-  --image-list "$imgList"                    \
-  --camera-list "$camList"                   \
-  $gcpPos                                    \
-  --inline-adjustments                       \
-  --match-files-prefix "$matchpfx"           \
-  --heights-from-dem "$refDem"               \
-  --heights-from-dem-uncertainty "$htUnc"    \
-  --heights-from-dem-robust-threshold 0.1    \
-  --camera-position-uncertainty "$camPosUnc" \
-  $gcpOpt                                    \
-  $intrOpt                                   \
-  --robust-threshold "$robust"               \
-  --num-iterations 50                        \
-  --num-passes 2                             \
-  --remove-outliers-params "75 3 100 100"    \
-  --min-triangulation-angle 1e-10            \
-  --forced-triangulation-distance 392000     \
-  --max-pairwise-matches 2000                \
-  -o "$out/run"                              \
+bundle_adjust                                        \
+  --image-list "$imgList"                            \
+  --camera-list "$camList"                           \
+  $gcpPos                                            \
+  --inline-adjustments                               \
+  --match-files-prefix "$matchpfx"                   \
+  --heights-from-dem "$refDem"                       \
+  --heights-from-dem-uncertainty "$htUnc"            \
+  --heights-from-dem-robust-threshold "$htdemRobust" \
+  --camera-position-uncertainty "$camPosUnc"         \
+  $gcpOpt                                            \
+  $intrOpt                                           \
+  --robust-threshold "$robust"                       \
+  --num-iterations 50                                \
+  --num-passes 2                                     \
+  --remove-outliers-params "75 3 100 100"            \
+  --min-triangulation-angle 1e-10                    \
+  --forced-triangulation-distance 392000             \
+  --max-pairwise-matches 2000                        \
+  -o "$out/run"                                      \
   || { echo "BA FAILED - tail:"; tail -25 "$out"/*log*bundle_adjust*.txt 2>/dev/null; exit 1; }
 echo "BA done. output cams: $(ls "$out"/run-*.adjusted_state.json 2>/dev/null | wc -l) ($(date))"
 echo "CASSIS_BA_DONE $(date)"
