@@ -1,6 +1,8 @@
 #!/bin/bash
 # cassis_fetch_pair.sh - generic per-pair CaSSIS calibrated PAN framelet fetch from
 # the ESA PSA archive.
+# RUN ON: the head / front-end node (this is a FETCH step - network only, no heavy
+# compute). It downloads one framelet at a time (gentle on the archive and the node).
 # Args:
 #   $1 orbit    (e.g. 4756)              $2 acq1 (L/STEREO1 sid)   $3 acq2 (R/STEREO2 sid)
 #   $4 destDir  (e.g. data/MY34_004756_354_1 - a clean root, not the legacy

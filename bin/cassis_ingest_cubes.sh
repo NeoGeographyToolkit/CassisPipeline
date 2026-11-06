@@ -1,5 +1,7 @@
 #!/bin/bash
 # cassis_ingest_cubes.sh - generic CaSSIS framelet -> ISIS cube ingest (no kernels).
+# RUN ON: a COMPUTE NODE (qsub). This is a PROCESS step (tgocassis2isis per framelet =
+# CPU work), not a download - do NOT run it on the head / front-end node.
 # Parametrized by the site data root. For each look dir under it whose .dat count
 # == .xml count: tgocassis2isis on each calibrated framelet .xml -> .cub, then inject
 # SpacecraftClockStartCount from the XML hex-ASCII exposuretimestamp (PSA-export

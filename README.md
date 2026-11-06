@@ -36,6 +36,19 @@ Older documentation called the fetch-plus-prep group "Tier 1" and the numbered s
 versus compute: only the fetch steps need outside access, and everything else (including
 the ingest, camera, and CTX-blend prep) runs on a compute node.
 
+**Which script runs where** (each script's header also states this):
+
+- *Head / front-end node* (download jobs, network only, no heavy compute):
+  *cassis_find_looks.sh*, *cassis_fetch_pair.sh*, *cassis_ctx_fetch.sh* - all driven by
+  the single *cassis_fetch.sh*.
+- *Compute node, submitted with qsub* (process jobs, CPU/memory, no network):
+  *cassis_ingest_cubes.sh* (framelets to cubes), *cassis_make_cameras.sh* (one CSM camera
+  per cube with isd_generate), *cassis_ctx_blend.sh* (builds the CTX reference DEM), and
+  *cassis_process.sh* (the numbered stages). On a cluster, group these into one batch job
+  that activates each environment in turn. Do not run them on the head node - the ingest
+  and camera steps are sustained per-framelet loops and the stages are heavy stereo, so
+  the head-node policy gate will terminate them.
+
 The published (prior vendor) CaSSIS DEM is downloaded only for optional comparison; it is
 not an input to the pipeline. A new site is processed without it (see "Processing a new
 site from scratch").

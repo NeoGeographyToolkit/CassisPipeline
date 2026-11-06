@@ -1,6 +1,9 @@
 #!/bin/bash
 # cassis_process.sh - the single end-to-end CaSSIS pipeline, from original inputs to
-# the final DEM. Config-driven (sources cassis_common.conf + a per-site
+# the final DEM.
+# RUN ON: a COMPUTE NODE (qsub). The numbered stages are heavy stereo / bundle_adjust /
+# point2dem compute - never run them on the head / front-end node.
+# Config-driven (sources cassis_common.conf + a per-site
 # cassis_siteName.conf), resumable by stage number, and timed (every heavy stage prints
 # START/DONE + elapsed via `date`). No figures.
 #

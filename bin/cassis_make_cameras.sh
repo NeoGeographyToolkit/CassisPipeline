@@ -1,6 +1,8 @@
 #!/bin/bash
 # cassis_make_cameras.sh - create a CSM camera model (.json) for each CaSSIS
 # framelet cube, with isd_generate.
+# RUN ON: a COMPUTE NODE (qsub). This is a PROCESS step (isd_generate reloads SPICE per
+# cube = a sustained compute loop), not a download - do NOT run it on the head node.
 #
 # One cube in, one camera file out, next to the cube. Requires:
 #   - a full ISISDATA (base + tgo, including the ESA CaSSIS metakernel),
