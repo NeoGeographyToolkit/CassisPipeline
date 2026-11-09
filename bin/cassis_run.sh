@@ -31,21 +31,21 @@ matchpfx=${matchpfx:-$outDir/frame/dense/matches/run-disp}   # uniform; a config
 # pass2 toc gcp mode: no_gcp default; soft_gcp is a general off-by-default option
 pass2Gcp=${pass2Gcp:-no_gcp}
 # TIC GCP mode (cassis_pass.sh stage 2): yes = --fix-gcp-xyz (hard, gcpSigma ignored); no = float GCP
-# (soft, gcpSigma weights). Default yes (unchanged). Exported so the cassis_pass.sh child inherits it.
-export ticFixGcp=${ticFixGcp:-yes}
+# (soft, gcpSigma weights). Default no (the production recipe). Exported so the cassis_pass.sh child inherits it.
+export ticFixGcp=${ticFixGcp:-no}
 # OPT-IN texture-quality GCP filter (cassis_pass.sh boot GCP0): gcpTextureMin = minimum local
 # linescan-hillshade std to keep a boot-disparity GCP (default empty/off = shipped behavior).
 # gcpTextureWin = the window in px. Exported so cassis_pass.sh inherits them.
 export gcpTextureMin=${gcpTextureMin:-}
 export gcpTextureWin=${gcpTextureWin:-15}
-# OPT-IN robust cost on the floated-GCP residuals (cassis_ba.sh tic): gcpRobust attenuates
-# noisy/wrong boot GCPs (default empty/off). Meaningful with ticFixGcp=no. Exported for the child.
-export gcpRobust=${gcpRobust:-}
+# Robust cost on the floated-GCP residuals (cassis_ba.sh tic): gcpRobust attenuates noisy/wrong
+# boot GCPs (default 1, the production recipe; set "no" to disable). Applies with ticFixGcp=no. Exported for the child.
+export gcpRobust=${gcpRobust:-1}
 # OPT-IN ticNoGcp=yes (default no): the tic stage uses NO ground control (ties + htdem only).
 export ticNoGcp=${ticNoGcp:-no}
-# OPT-IN heights-from-dem robust threshold (cassis_ba.sh), default 0.1 (shipped). Loosen (large value)
-# to let the CTX heights-from-dem hold low-texture terrain instead of being robust-rejected there.
-export htdemRobust=${htdemRobust:-0.1}
+# Heights-from-dem robust threshold (cassis_ba.sh), default 1000000 = effectively off (the production
+# recipe), so the CTX heights-from-dem hold low-texture terrain instead of being robust-rejected there.
+export htdemRobust=${htdemRobust:-1000000}
 # linescanDem and startCamDir are derived from outDir by convention (a config may
 # override).
 startCamDir=${startCamDir:-$outDir/frame/distortion_corrected_cassis_cams}

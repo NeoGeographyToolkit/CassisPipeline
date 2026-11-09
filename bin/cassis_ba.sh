@@ -19,10 +19,10 @@ gcp=${9:?gcp (.gcp path, or "no_gcp")}; fixgcp=${10:?fixgcp (yes|no)}; robust=${
 intrFloat=${12:?intrFloat (yes_intr_float|no_intr_float)}; B=${13:?B (cd target, LAST)}
 # Optional env-var knobs (passed by the caller via the config; see cassis_run.sh). Resolve
 # their defaults ONCE here, up front, so the use sites below read a plain variable:
-#   htdemRobust - heights-from-dem robust threshold (default 0.1, the shipped value)
-#   gcpRobust   - robust cost on the floated-GCP residuals (empty = off)
-htdemRobust=${htdemRobust:-0.1}
-gcpRobust=${gcpRobust:-}
+#   htdemRobust - heights-from-dem robust threshold (default 1000000, effectively off)
+#   gcpRobust   - robust cost on the floated-GCP residuals (default 1; "no" = off)
+htdemRobust=${htdemRobust:-1000000}
+gcpRobust=${gcpRobust:-1}
 # ASP/ISIS tools on PATH and environment are set up by the caller. See the README.
 cd "$B" || { echo "ERROR cannot cd $B"; exit 1; }
 out=$outDir/frame/$outTag; mkdir -p "$out"

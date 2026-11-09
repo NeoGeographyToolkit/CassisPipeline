@@ -362,6 +362,12 @@ documentation: *cassis_jezero.conf*, *cassis_ox1.conf*, *cassis_ox2.conf*,
   bundle-adjustment uncertainties, the optimized and fixed lens coefficients,
   dense-match settings). It normally does not need editing. The lens coefficients
   are a global CaSSIS instrument constant, reused as is for every site.
+
+  The bundle-adjustment defaults are the control recipe. The TIC bundle floats the
+  linescan-to-CTX ground control as a soft constraint (*ticFixGcp* no, weighted by *gcpSigma*
+  40, with *gcpRobust* 1 attenuating noisy boot control points) and keeps the heights-from-dem
+  loose (*htUncLoose* 100, *htdemRobust* effectively off). This registers a low-texture frame
+  DEM to CTX without seams or a floated-datum split. A per-site config can override any of these.
 - *cassis_siteName.conf* (for example *cassis_jezero.conf*) holds only the per-site
   inputs, listed above under Reference data: *inputCassisDir*, *Llook*, *Rlook*, *refDem*,
   and *mapprojDem*. The two looks are found by their id in the cube filenames, so
