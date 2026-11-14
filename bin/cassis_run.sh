@@ -46,9 +46,6 @@ export ticNoGcp=${ticNoGcp:-no}
 # Heights-from-dem robust threshold (cassis_ba.sh), default 1000000 = effectively off (the production
 # recipe), so the CTX heights-from-dem hold low-texture terrain instead of being robust-rejected there.
 export htdemRobust=${htdemRobust:-1000000}
-# OPT-IN orbital groups (cassis_ba.sh): one rigid position trajectory per look, orientations
-# free per framelet. Default no. Exported for the child.
-export orbitalGroups=${orbitalGroups:-no}
 # ticIntrFloat=yes (cassis_pass.sh, on in cassis_common.conf): the TIC floats the shared lens distortion.
 export ticIntrFloat=${ticIntrFloat:-no}
 # demSeed=yes (cassis_stereo.sh DEM mode, on in cassis_common.conf): seed the per-pair stereo from refDem
