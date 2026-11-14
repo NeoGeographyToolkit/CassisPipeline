@@ -64,10 +64,6 @@ else
   echo "INTRINSICS: fixed"
 fi
 echo "robust-threshold=$robust"
-# Tie outlier removal between the two passes: pct factor err1 err2 (bundle_adjust
-# --remove-outliers-params). The default 100 px bound leaves it effectively off.
-baOutlierParams=${baOutlierParams:-75 3 100 100}
-echo "remove-outliers-params=$baOutlierParams"
 
 # Joint BA: htdem pin to CTX, poses on a leash, distortion fixed or floated per intrFloat.
 bundle_adjust                                        \
@@ -85,7 +81,7 @@ bundle_adjust                                        \
   --robust-threshold "$robust"                       \
   --num-iterations 50                                \
   --num-passes 2                                     \
-  --remove-outliers-params "$baOutlierParams"        \
+  --remove-outliers-params "75 3 100 100"            \
   --min-triangulation-angle 1e-10                    \
   --forced-triangulation-distance 392000             \
   --max-pairwise-matches 2000                        \

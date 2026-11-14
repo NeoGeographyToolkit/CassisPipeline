@@ -51,8 +51,6 @@ export ticIntrFloat=${ticIntrFloat:-no}
 # demSeed=yes (cassis_stereo.sh DEM mode, on in cassis_common.conf): seed the per-pair stereo from refDem
 # (--corr-seed-mode 2, error demSeedErr m). Unset = no. Exported for the child.
 export demSeed=${demSeed:-no} demSeedErr=${demSeedErr:-20}
-# baOutlierParams (cassis_ba.sh): bundle_adjust --remove-outliers-params for both BA stages.
-export baOutlierParams=${baOutlierParams:-75 3 100 100}
 # linescanDem and startCamDir are derived from outDir by convention (a config may
 # override).
 startCamDir=${startCamDir:-$outDir/frame/distortion_corrected_cassis_cams}
