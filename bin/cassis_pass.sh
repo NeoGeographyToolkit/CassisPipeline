@@ -83,13 +83,9 @@ ticFixGcp=${ticFixGcp:-yes}
 # only), to see the strip registered purely by the aligned linescan + htdem, with no GCP stress.
 ticGcpArg="$gcp0"
 if [ "${ticNoGcp:-no}" = yes ]; then ticGcpArg=no_gcp; echo "  ticNoGcp=yes: TIC with NO ground control (ties + htdem only)"; fi
-# OPT-IN ticIntrFloat=yes (default no): the TIC floats the lens distortion, shared by all framelets.
-# A residual lens error (e.g. a y-scale) makes the overlap loops between adjacent framelets fail to
-# close, and the robust BA then gives up one tie and leaves that pair inconsistent.
-ticIntr=no_intr_float; [ "${ticIntrFloat:-no}" = yes ] && ticIntr=yes_intr_float
 echo "[2/6] TIC BA gcp (fix-gcp-xyz=$ticFixGcp, gcpSigma=$gcpSigma, ticNoGcp=${ticNoGcp:-no}) $(date)"
 bash cassis_ba.sh "$outDir" "${outTag}_tic" "$img" "$cam" "$refDem" "$matchpfx" \
-  "$htUncLoose" "$camPosUnc" "$ticGcpArg" "$ticFixGcp" "$robust" "$ticIntr" "$B" || { echo "STAGE_FAIL tic"; exit 1; }
+  "$htUncLoose" "$camPosUnc" "$ticGcpArg" "$ticFixGcp" "$robust" no_intr_float "$B" || { echo "STAGE_FAIL tic"; exit 1; }
 ticImg=$outDir/frame/${outTag}_tic/run-image_list.txt; ticCam=$outDir/frame/${outTag}_tic/run-camera_list.txt
 [ -s "$ticImg" ] && [ -s "$ticCam" ] || { echo "STAGE_FAIL tic produced no lists"; exit 1; }
 
