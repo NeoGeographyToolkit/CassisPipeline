@@ -64,6 +64,10 @@ else
   echo "INTRINSICS: fixed"
 fi
 echo "robust-threshold=$robust"
+# Tie outlier removal between the two passes: pct factor err1 err2 (bundle_adjust
+# --remove-outliers-params). The default 100 px bound leaves it effectively off.
+baOutlierParams=${baOutlierParams:-75 3 100 100}
+echo "remove-outliers-params=$baOutlierParams"
 
 # Orbital groups (opt-in, orbitalGroups=yes): the framelets of one look were acquired
 # along one orbit, so tie their positions to one shared rigid trajectory per look
@@ -99,7 +103,7 @@ bundle_adjust                                        \
   --robust-threshold "$robust"                       \
   --num-iterations 50                                \
   --num-passes 2                                     \
-  --remove-outliers-params "75 3 100 100"            \
+  --remove-outliers-params "$baOutlierParams"        \
   --min-triangulation-angle 1e-10                    \
   --forced-triangulation-distance 392000             \
   --max-pairwise-matches 2000                        \
