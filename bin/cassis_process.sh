@@ -242,6 +242,9 @@ if want 6; then
       [ -s "$cub" ] || { echo "  MISS cub $stem"; continue; }
       echo "$cub" >> "$dimg"; echo "$camf" >> "$dcam"
     done
+    # OPT-IN denseDemSeed=yes: a dense L-R pair that fails both correlation seeds is retried
+    # with a disparity seed from the mapproj DEM (error denseDemSeedErr m). Default no.
+    export denseDemSeed=${denseDemSeed:-no} denseDemSeedErr=${denseDemSeedErr:-50}
     # dense mode: geounc is the pre-BA collar (denseGeounc), not the DEM geounc=0
     bash "$selfBin/cassis_stereo.sh" "$outDir" "${nick}_dense" "$dimg" "$dcam" "$denseGeounc" "$mapprojDem" "$refDem" \
       "$mapprojRes" "$demRes" "$matchpfx" "$Llook" "$Rlook" "$num_matches_from_disp" "$B" \

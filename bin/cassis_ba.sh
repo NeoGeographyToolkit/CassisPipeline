@@ -65,6 +65,23 @@ else
 fi
 echo "robust-threshold=$robust"
 
+# Orbital groups (opt-in, orbitalGroups=yes): the framelets of one look were acquired
+# along one orbit, so tie their positions to one shared rigid trajectory per look
+# (bundle_adjust --orbital-group-list) and leave each orientation free. Otherwise a
+# tiny-field-of-view framelet can slide kilometers along its view direction and
+# compensate by rotation, which fits its center but breaks the ties at its edges.
+orbOpt=""
+if [ "${orbitalGroups:-no}" = yes ]; then
+  groups=""
+  for lk in $(sed -n 's/.*-PAN-\([0-9][0-9]*\)-.*/\1/p' "$imgList" | sort -u); do
+    gf=$out/orbital_group_$lk.txt
+    grep -- "-PAN-$lk-" "$imgList" > "$gf"
+    groups="$groups${groups:+,}$gf"
+  done
+  orbOpt="--orbital-group-list $groups"
+  echo "ORBITAL GROUPS: $groups"
+fi
+
 # Joint BA: htdem pin to CTX, poses on a leash, distortion fixed or floated per intrFloat.
 bundle_adjust                                        \
   --image-list "$imgList"                            \
@@ -78,6 +95,7 @@ bundle_adjust                                        \
   --camera-position-uncertainty "$camPosUnc"         \
   $gcpOpt                                            \
   $intrOpt                                           \
+  $orbOpt                                            \
   --robust-threshold "$robust"                       \
   --num-iterations 50                                \
   --num-passes 2                                     \

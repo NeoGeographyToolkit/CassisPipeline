@@ -57,13 +57,17 @@ case "$mode" in
     # pyramid seed) first. On thin-overlap pairs its low-resolution D_sub can come back empty
     # ("No tiles were generated"), producing no match. Fall back to --corr-seed-mode 0 (a
     # direct full search in the interest-point search window), which recovers those marginal
-    # pairs. The seed mode is the only difference between the two attempts.
-    lr_try() {  # $1 = corr-seed-mode; echoes the produced dense match file (empty if none)
+    # pairs. On low-texture ground the interest points themselves give a wrong search range,
+    # so both fail. Then, if denseDemSeed=yes, take the low-res disparity from the mapproj DEM
+    # and the cameras (--corr-seed-mode 2), which needs no interest points. This rung is
+    # geometric, so a pair with no real overlap still yields no match.
+    lr_try() {  # $1 = corr-seed-mode, $2+ = extra options; echoes the dense match file (empty if none)
+      local sm=$1; shift
       rm -rf "$od"; mkdir -p "$od"
       parallel_stereo --processes 1 --threads-multiprocess $T --threads-singleprocess $T \
-        --alignment-method none --stereo-algorithm asp_mgm --subpixel-mode 9 --corr-seed-mode "$1" \
+        --alignment-method none --stereo-algorithm asp_mgm --subpixel-mode 9 --corr-seed-mode "$sm" \
         --mapproj-geolocation-uncertainty $geounc \
-        --num-matches-from-disparity $nmd --max-disp-spread 120 \
+        --num-matches-from-disparity $nmd --max-disp-spread 120 "$@" \
         "$out/maps/$a.tif" "$out/maps/$b.tif" "$ca" "$cb" "$od/run" "$mapprojDem" > "$od.log" 2>&1
       ls "$od"/run-disp-*.match 2>/dev/null | head -1
     }
@@ -72,7 +76,11 @@ case "$mode" in
       echo "  lr $a $b: --corr-seed-mode 1 produced no match (thin-overlap empty disparity); retrying with --corr-seed-mode 0"
       m=$(lr_try 0)
     fi
-    [ -n "$m" ] && cp -f "$m" "$mf" || echo "  NO MATCH lr $a $b (--corr-seed-mode 1 and 0 both failed)"
+    if [ -z "$m" ] && [ "${denseDemSeed:-no}" = yes ]; then
+      m=$(lr_try 2 --disparity-estimation-dem "$mapprojDem" --disparity-estimation-dem-error "${denseDemSeedErr:-50}")
+      [ -n "$m" ] && echo "  lr $a $b: matched with --corr-seed-mode 2 (DEM seed)"
+    fi
+    [ -n "$m" ] && cp -f "$m" "$mf" || echo "  NO MATCH lr $a $b (all seed modes failed)"
     ;;
   same)
     # Same-look tie between consecutive framelets. PRIMARY = full-frame affineepipolar (the

@@ -367,7 +367,13 @@ documentation: *cassis_jezero.conf*, *cassis_ox1.conf*, *cassis_ox2.conf*,
   linescan-to-CTX ground control as a soft constraint (*ticFixGcp* no, weighted by *gcpSigma*
   40, with *gcpRobust* 1 attenuating noisy boot control points) and keeps the heights-from-dem
   loose (*htUncLoose* 100, *htdemRobust* effectively off). This registers a low-texture frame
-  DEM to CTX without seams or a floated-datum split. A per-site config can override any of these.
+  DEM to CTX without seams or a floated-datum split. The TIC also floats the lens distortion
+  shared by all framelets (*ticIntrFloat* yes), which closes the overlap loops between adjacent
+  framelets and removes seams. Correlation is seeded from the reference DEM and the cameras
+  where image-based seeding is unreliable (*denseDemSeed* yes for a stage-6 L-R pair that fails
+  both image-based seeds, *demSeed* yes for every stage-7 pair). This keeps thin, streaky, or
+  low-texture overlaps from producing no match or a wrong lock, which otherwise leave gaps in
+  the DEM. A per-site config can override any of these.
 - *cassis_siteName.conf* (for example *cassis_jezero.conf*) holds only the per-site
   inputs, listed above under Reference data: *inputCassisDir*, *Llook*, *Rlook*, *refDem*,
   and *mapprojDem*. The two looks are found by their id in the cube filenames, so

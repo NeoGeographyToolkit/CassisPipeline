@@ -169,6 +169,8 @@ Llook='$Llook'
 Rlook='$Rlook'
 revLlook='$revL'
 revRlook='$revR'
+denseDemSeed='${denseDemSeed:-no}'
+denseDemSeedErr='${denseDemSeedErr:-50}'
 ENV
 }
 
@@ -311,9 +313,16 @@ no=$(wc -l < "$ovl")
 echo "[3] multi_stereo stereo, dem, mosaic over $no pairs (-j $K, T=$T, cores=$cores)"
 [ "$no" -ge 1 ] || { echo "error: no overlap-list rows built"; exit 1; }
 
+# Seed for the low-res disparity. Default 1 (low-res correlation). demSeed=yes uses mode 2,
+# the disparity predicted from refDem and the BA cameras: on a thin or streaky overlap the
+# low-res correlation can lock along the texture and give a smooth but wrong disparity,
+# which the triangulation-error cut then removes, leaving a gap.
+seedOpts="--corr-seed-mode 1"
+[ "${demSeed:-no}" = yes ] && seedOpts="--corr-seed-mode 2 --disparity-estimation-dem $refDem --disparity-estimation-dem-error ${demSeedErr:-20}"
+echo "  seed: $seedOpts"
 stereoOpts="--processes 1 --threads-multiprocess $T --threads-singleprocess $T
   --alignment-method none --stereo-algorithm asp_mgm --subpixel-mode 9
-  --corr-seed-mode 1 --min-matches 5 --ip-per-tile 2000
+  $seedOpts --min-matches 5 --ip-per-tile 2000
   --mapproj-geolocation-uncertainty 0 --ip-match-radius 20"
 demOpts="--tr $demRes --errorimage --max-valid-triangulation-error 8"
 
