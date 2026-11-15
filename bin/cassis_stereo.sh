@@ -136,7 +136,11 @@ while read -r c; do
   mrun=$((mrun+1)); [ "$mrun" -ge "$MK" ] && { wait -n 2>/dev/null || true; mrun=$((mrun-1)); }
 done < "$imgList"
 wait
-echo "  mapped: $(ls $out/maps/*.tif 2>/dev/null | wc -l) framelets"
+nmap=$(ls $out/maps/*.tif 2>/dev/null | wc -l | tr -d ' ')
+echo "  mapped: $nmap framelets"
+# With fewer than two mapprojected framelets there is nothing to pair; stop instead of emitting no matches
+# (every mapproject failing usually means broken cameras, e.g. a bad CTX alignment).
+[ "${nmap:-0}" -ge 2 ] || { echo "ERROR only $nmap framelets mapprojected; check the cameras in $camList"; exit 1; }
 
 # img (cub) path for a framelet stem, from the input image list (1-1 with camList);
 # dense same-look needs it.
