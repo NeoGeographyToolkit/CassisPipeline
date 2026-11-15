@@ -22,7 +22,7 @@
 # frame-only, which is why this injection is needed at all.
 #
 # Usage: linescan_refit_lens.py <in_linescan_state.json> <refit_frame_cam_dir> <sid> <out_state.json>
-import json, glob, re, sys
+import json, glob, os, re, sys
 
 def load(f):
     t = open(f).read()
@@ -56,14 +56,24 @@ def main():
 
     pos = list(d["m_positions"]); quat = list(d["m_quaternions"])
     nwrote = 0
-    # time-ordered node j <- j-th present framelet (robust to archive index gaps)
+    # Time-ordered node j <- j-th present framelet. The node time is not exactly the framelet center time,
+    # and the mismatch grows between archive index gaps, so an absolute position copy puts the node hundreds
+    # of meters off along track. Add instead the refit position change of that framelet (refit minus its vendor
+    # frame camera, the raw state cam_gen started from) to the node's own position. The orientation changes
+    # little over such time offsets, so the refit quaternion is copied.
     for j, cf in enumerate(cams):
         if j >= nnodes:
             print(f"  WARN more refit cams ({len(cams)}) than nodes ({nnodes}); extra cams ignored")
             break
         st, _ = load(cf)
         cv = st["m_currentParameterValue"]   # [x,y,z, q0,q1,q2,q3], ECEF, same frame as the node
-        pos[3 * j:3 * j + 3] = cv[0:3]
+        stem = os.path.basename(cf)[:-len(".json")]
+        rawf = os.path.join(cam_dir, f"raw_{sid}", f"raw-{stem}.adjusted_state.json")
+        if not os.path.exists(rawf):
+            sys.exit(f"ERROR missing the vendor frame state {rawf} for the refit cam {cf}")
+        rv = load(rawf)[0]["m_currentParameterValue"]
+        for k in range(3):
+            pos[3 * j + k] += cv[k] - rv[k]
         quat[4 * j:4 * j + 4] = cv[3:7]
         nwrote += 1
     d["m_positions"] = pos; d["m_quaternions"] = quat
