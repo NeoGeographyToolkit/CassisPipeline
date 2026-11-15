@@ -411,17 +411,10 @@ the CTX reference DEM and the blurred mapproj DEM), not here.
 
 ### Stage 1, linescan DEM
 
-Merges each CaSSIS look into a single image, creates a linescan camera, and
-makes a first DEM, aligned to the coarse CTX reference whose grid and projection
-drive every output. Needs the framelet cubes and cameras from ingestion.
-
-The linescan is built from the refit framelet cameras, which carry the optimized
-transverse lens (*refitBeforeLinescan=yes*, the default). The linescan, its CTX
-registration, and the ground control derived from it then use the same lens as
-every framelet camera downstream. Stages 4 and 5 only gather the refit cameras.
-Before stages 2 and 7, *cassis_process.sh* checks that the linescan camera states
-carry the optimized lens and stops if they do not. A linescan built with the vendor
-lens disagrees with the framelet cameras by about 2% across the track.
+Merges each CaSSIS look into a single image, creates an approximate linescan
+camera (with the optimized lens distortion), and makes a first DEM, aligned to
+the coarse CTX reference whose grid and projection drive every output. Needs the
+framelet cubes and cameras from ingestion.
 
 Example for the Jezero site, from inside the unpacked directory:
 
