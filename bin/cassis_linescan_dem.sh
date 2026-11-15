@@ -101,10 +101,15 @@ if [ "${refitBeforeLinescan:-yes}" = yes ]; then
   Rcstate=$out/cassis_ls/run-$(basename ${Risd%.json}).adjusted_state.json
   if [ ! -s "$Lcstate" ] || [ ! -s "$Rcstate" ]; then
     echo "S3pre 0-iter BA: linescan ISDs -> cassis linescan states"
+    # Zero iterations: this only converts the ISDs to states, but bundle_adjust still needs some
+    # matches to run, so use the interest-point settings of the tie BA below.
     bundle_adjust "$Ls" "$Rs" "$Lisd" "$Risd" --inline-adjustments --num-iterations 0 \
-      --overlap-limit 1 --min-matches 0 --ip-per-image 100 -o "$out/cassis_ls/run"    \
-      > "$out/cassis_ls/ba0_log.txt" 2>&1 || { echo "S3pre ISD->state BA FAILED"; tail -15 "$out/cassis_ls/ba0_log.txt"; exit 1; }
+      --overlap-limit 1 --min-matches 0 --ip-detect-method 1 --ip-per-image 50000     \
+      -o "$out/cassis_ls/run" > "$out/cassis_ls/ba0_log.txt" 2>&1                     \
+      || { echo "S3pre ISD->state BA FAILED"; tail -15 "$out/cassis_ls/ba0_log.txt"; exit 1; }
   fi
+  [ -s "$Lcstate" ] && [ -s "$Rcstate" ] \
+    || { echo "S3pre ISD->state BA wrote no states"; tail -15 "$out/cassis_ls/ba0_log.txt"; exit 1; }
   python3 "$BIN/linescan_refit_lens.py" "$Lcstate" "$refitDir" "$sidL" "$out/refit_ls/$(basename ${Lisd%.json}).json" || { echo "S3pre inject L FAILED"; exit 1; }
   python3 "$BIN/linescan_refit_lens.py" "$Rcstate" "$refitDir" "$sidR" "$out/refit_ls/$(basename ${Risd%.json}).json" || { echo "S3pre inject R FAILED"; exit 1; }
   Lcam=$out/refit_ls/$(basename ${Lisd%.json}).json
