@@ -83,16 +83,16 @@ for f in "$Ls" "$Rs" "$Lisd" "$Risd"; do [ -s "$f" ] || { echo "ERROR missing $f
 out=$work/linescan_dem; mkdir -p "$out/ba" "$out/stereo" "$out/align"
 seed=$coarse   # all coarse: seed = coarse ctx
 
-# REORDER (opt-in): refitBeforeLinescan=yes builds the linescan from the REFIT cameras
-# (optimized transverse lens + refit pose) instead of the vendor CaSSIS lens, so the
-# linescan, its CTX registration, and the stage-7 GCP all use the refit cameras. The late
-# refit (stages 4-5) is then skipped. Default no = the shipped pipeline, byte-unchanged.
+# refitBeforeLinescan=yes (default) builds the linescan from the REFIT cameras (optimized
+# transverse lens + refit pose) instead of the vendor CaSSIS lens, so the linescan, its CTX
+# registration, and the stage-7 GCP all use the same lens as the framelet cameras. Stages
+# 4-5 then only gather. no = vendor lens on the linescan.
 # Mechanism (proven): cam_gen refit is frame-only, so refit each framelet FRAME camera
 # (refit_frame_cams.sh), then inject the transverse lens + the refit poses into the
 # linescan states (linescan_refit_lens.py, a conversion-free CSM-state copy). The tie BA
 # below then ties the two refit looks, preserving the L-R tie on the refit lens.
 Lcam=$Lisd; Rcam=$Risd
-if [ "${refitBeforeLinescan:-no}" = yes ]; then
+if [ "${refitBeforeLinescan:-yes}" = yes ]; then
   echo "S3pre refitBeforeLinescan=yes: build refit frame cams + inject transverse lens into linescan states"
   bash "$BIN/refit_frame_cams.sh" "$cfg" "$outDir" "$B" || { echo "REFIT_FRAME_CAMS FAILED"; exit 1; }
   refitDir=$outDir/frame/refit_frame_cams_prelink

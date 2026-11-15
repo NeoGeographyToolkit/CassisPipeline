@@ -53,7 +53,7 @@ PY
   isds=$(for c in $cubes; do echo ${c%.cub}.json; done)
   echo "[aligned_framelets $look $sid] $nc valid framelet cubes"
 
-  if [ "${refitBeforeLinescan:-no}" = yes ]; then
+  if [ "${refitBeforeLinescan:-yes}" = yes ]; then
     # REORDER: the base frame states are the TRANSVERSE refit frame cams built up front
     # (refit_frame_cams.sh). We keep their transverse distortion and overwrite the pose
     # with the aligned linescan node, so the aligned framelets carry the refit lens + the

@@ -32,6 +32,38 @@ od=$out/stereo/${a}__${b}
 ca=$(cam_of "$a"); cb=$(cam_of "$b")
 mf=${matchPrefix}-${a}__${b}.match
 
+# Bounded dense match (denseBounded=yes), for L-R and same-look pairs alike. With the start cameras the
+# two mapprojected framelets agree on the ground to within ~10 px, so: measure that integer shift over
+# the footprint overlap (cassis_pair_window.py, +-40 px), mapproject both onto that window with B's
+# window moved by the shift, and correlate with a small fixed search. No interest points, no open search
+# range, so a bland overlap gives few or no matches, never a false lock.
+bounded_match() {
+  local sb ia ib win x0 y0 x1 y1 sx sy pk winb m
+  sb=$(cd "$(dirname "$0")" && pwd)
+  ia=$(img_of "$a"); ib=$(img_of "$b")
+  [ -s "$ia" ] && [ -s "$ib" ] && [ -s "$ca" ] && [ -s "$cb" ] && [ -s "$out/maps/$a.tif" ] \
+    && [ -s "$out/maps/$b.tif" ] || { echo "  skip $mode $a $b (no input)"; return; }
+  rm -rf "$od"; mkdir -p "$od"
+  win=$(python3 "$sb/cassis_pair_window.py" "$out/maps/$a.tif" "$out/maps/$b.tif" 40)
+  [ -n "$win" ] || { echo "  NO MATCH $mode $a $b (no measurable overlap)"; return; }
+  read x0 y0 x1 y1 sx sy pk <<< "$win"
+  winb=$(awk -v x0=$x0 -v y0=$y0 -v x1=$x1 -v y1=$y1 -v sx=$sx -v sy=$sy -v r=$res \
+    'BEGIN{printf "%.6f %.6f %.6f %.6f", x0+sx*r, y0-sy*r, x1+sx*r, y1-sy*r}')
+  mapproject --threads $T --tr $res --t_projwin $x0 $y0 $x1 $y1 "$mapprojDem" "$ia" "$ca" "$od/A.tif" \
+    > "$od.log" 2>&1
+  mapproject --threads $T --tr $res --t_projwin $winb "$mapprojDem" "$ib" "$cb" "$od/B.tif" >> "$od.log" 2>&1
+  parallel_stereo --processes 1 --threads-multiprocess $T --threads-singleprocess $T          \
+    --alignment-method none --stereo-algorithm asp_mgm --subpixel-mode 9 --corr-seed-mode 0   \
+    --corr-search -8 -8 8 8 --num-matches-from-disparity $nmd --min-triangulation-angle 1e-10 \
+    "$od/A.tif" "$od/B.tif" "$ca" "$cb" "$od/run" "$mapprojDem" >> "$od.log" 2>&1
+  m=$(ls "$od"/run-disp-*.match 2>/dev/null | head -1)
+  if [ -n "$m" ] && [ -s "$m" ]; then
+    cp -f "$m" "$mf"; echo "  $mode $a $b: bounded match, ground shift $sx $sy px (ncc $pk)"
+  else
+    echo "  NO MATCH $mode $a $b (bounded, ground shift $sx $sy px, ncc $pk)"
+  fi
+}
+
 case "$mode" in
   dem)
     if [ -s "$od/dem-DEM.tif" ] && gdalinfo -stats "$od/dem-DEM.tif" 2>/dev/null | grep -q STATISTICS_MINIMUM; then exit 0; fi
@@ -53,6 +85,7 @@ case "$mode" in
   lr)
     [ -s "$mf" ] && exit 0
     [ -s "$out/maps/$a.tif" ] && [ -s "$out/maps/$b.tif" ] && [ -s "$ca" ] && [ -s "$cb" ] || { echo "  skip lr $a $b (no ortho/cam)"; exit 0; }
+    [ "${denseBounded:-no}" = yes ] && { bounded_match; exit 0; }
     # Dense cross-look match in the mapprojected domain. Try --corr-seed-mode 1 (the fast
     # pyramid seed) first. On thin-overlap pairs its low-resolution D_sub can come back empty
     # ("No tiles were generated"), producing no match. Fall back to --corr-seed-mode 0 (a
@@ -108,6 +141,7 @@ case "$mode" in
     [ -s "$mf" ] && exit 0
     ia=$(img_of "$a"); ib=$(img_of "$b")
     [ -s "$ia" ] && [ -s "$ib" ] && [ -s "$ca" ] && [ -s "$cb" ] || { echo "  skip same $a $b (no input)"; exit 0; }
+    [ "${denseBounded:-no}" = yes ] && { bounded_match; exit 0; }
     # PRIMARY: full-frame affineepipolar (proven; keep whatever it matches). Only on abort/no
     # match do we fall through to the crop-window rescue below.
     aff="$od/aff"; rm -rf "$aff"; mkdir -p "$aff"

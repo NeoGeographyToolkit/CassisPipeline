@@ -171,6 +171,8 @@ revLlook='$revL'
 revRlook='$revR'
 denseDemSeed='${denseDemSeed:-no}'
 denseDemSeedErr='${denseDemSeedErr:-50}'
+denseBounded='${denseBounded:-no}'
+res='$res'
 ENV
 }
 

@@ -135,7 +135,24 @@ if want 1; then
   else bash "$selfBin/cassis_linescan_dem.sh" "$cfg" "$outDir" "$B" || { echo "STAGE1_FAIL linescan DEM"; exit 1; }; fi
   stage_done 1 "linescan DEM" "$t"
 fi
+# The linescan must carry the optimized lens, like every framelet camera downstream, so its CTX
+# registration and the stage-7 GCP built from it agree with the framelet ties. Stage 1 skips when a
+# linescan DEM already exists, so check the linescan states that are actually used (next to linescanDem).
+check_linescan_lens() {
+  local lsd states
+  if [ "${refitBeforeLinescan:-yes}" != yes ]; then
+    echo "  WARNING refitBeforeLinescan=$refitBeforeLinescan: the linescan is built WITHOUT the optimized lens"
+    return 0
+  fi
+  lsd=$(dirname "$(dirname "$linescanDem")")
+  states=$(ls "$lsd"/ba/run-*_linescan.adjusted_state.json 2>/dev/null)
+  [ -n "$states" ] || { echo "  WARNING no linescan states in $lsd/ba to check the lens of linescanDem=$linescanDem"; return 0; }
+  python3 "$selfBin/cassis_check_lens.py" "$optimized_distortion" $states \
+    || { echo "LENS_CHECK_FAIL the linescan in $lsd lacks the optimized lens. Rebuild it (stage 1 into a fresh outDir, or remove its linescan dir)."; exit 1; }
+  echo "  linescan lens check: optimized lens present ($lsd)"
+}
 if want 2; then
+  check_linescan_lens
   stage_hdr 2 "align linescan->CTX"; t=$(date +%s)
   if ls "$outDir"/linescan/linescan_dem/cams_aligned/run-*adjusted_state.json >/dev/null 2>&1; then echo "  aligned cam states exist - skip";
   else bash "$selfBin/cassis_align_cams.sh" "$cfg" "$outDir" "$B" || { echo "STAGE2_FAIL align"; exit 1; }; fi
@@ -151,7 +168,7 @@ if want 4; then
   stage_hdr 4 "refit lens -> transverse"; t=$(date +%s)
   n4=$(ls "$refitCamDir"/*.json 2>/dev/null | wc -l | tr -d ' ')
   if [ "${n4:-0}" -ge 2 ]; then echo "  registered_cassis_cams has $n4 cams - skip";
-  elif [ "${refitBeforeLinescan:-no}" = yes ]; then
+  elif [ "${refitBeforeLinescan:-yes}" = yes ]; then
     # REORDER: the aligned framelets (stage 3) already carry the transverse lens (it was
     # injected into the linescan up front), so there is nothing to refit. Gather them into
     # the flat registered_cassis_cams dir that stages 6-7 expect (strip the aligned- prefix).
@@ -177,7 +194,7 @@ if want 5; then
   nref=$(ls "$refitCamDir"/*.json 2>/dev/null | wc -l | tr -d ' ')
   [ "${nref:-0}" -ge 2 ] || { echo "STAGE5_FAIL too few refit cams ($nref) in $refitCamDir"; exit 1; }
   mkdir -p "$startCamDir"
-  if [ "${refitBeforeLinescan:-no}" = yes ]; then
+  if [ "${refitBeforeLinescan:-yes}" = yes ]; then
     # REORDER: the pose refit for the transverse lens was done up front (in the linescan),
     # so the registered_cassis_cams are already the start cameras. Gather them.
     echo "  refitBeforeLinescan=yes: pose refit already applied up front; gather registered cams into startCamDir"
@@ -245,6 +262,9 @@ if want 6; then
     # OPT-IN denseDemSeed=yes: a dense L-R pair that fails both correlation seeds is retried
     # with a disparity seed from the mapproj DEM (error denseDemSeedErr m). Default no.
     export denseDemSeed=${denseDemSeed:-no} denseDemSeedErr=${denseDemSeedErr:-50}
+    # OPT-IN denseBounded=yes: every dense pair (L-R and same-look) is correlated on a common mapprojected
+    # window with a small fixed search after measuring the ground shift. Default no.
+    export denseBounded=${denseBounded:-no}
     # dense mode: geounc is the pre-BA collar (denseGeounc), not the DEM geounc=0
     bash "$selfBin/cassis_stereo.sh" "$outDir" "${nick}_dense" "$dimg" "$dcam" "$denseGeounc" "$mapprojDem" "$refDem" \
       "$mapprojRes" "$demRes" "$matchpfx" "$Llook" "$Rlook" "$num_matches_from_disp" "$B" \
@@ -257,6 +277,7 @@ fi
 
 # stage 7: pass1 (heavy)
 if want 7; then
+  check_linescan_lens
   stage_hdr 7 "pass1"; t=$(date +%s)
   p1dem=$outDir/frame/pass1_stereo/cassis_dem.tif
   if [ -s "$p1dem" ]; then echo "  pass1 DEM exists - skip ($p1dem)";

@@ -415,6 +415,14 @@ Merges each CaSSIS look into a single image, creates a linescan camera, and
 makes a first DEM, aligned to the coarse CTX reference whose grid and projection
 drive every output. Needs the framelet cubes and cameras from ingestion.
 
+The linescan is built from the refit framelet cameras, which carry the optimized
+transverse lens (*refitBeforeLinescan=yes*, the default). The linescan, its CTX
+registration, and the ground control derived from it then use the same lens as
+every framelet camera downstream. Stages 4 and 5 only gather the refit cameras.
+Before stages 2 and 7, *cassis_process.sh* checks that the linescan camera states
+carry the optimized lens and stops if they do not. A linescan built with the vendor
+lens disagrees with the framelet cameras by about 2% across the track.
+
 Example for the Jezero site, from inside the unpacked directory:
 
 ```bash
@@ -458,7 +466,8 @@ Check that a frame camera was written per framelet. Documented at
 ### Stage 4, refit the lens distortion
 
 Refits a single optimized and fixed transverse-distortion model and sets it on
-the cameras.
+the cameras. With the default *refitBeforeLinescan=yes* this refit already
+happened before stage 1, so this stage only gathers the refit cameras.
 
 Example for the Jezero site (both looks in one call):
 
@@ -497,7 +506,10 @@ The stages within this group are:
 
 - Stage 5, apply the corrected lens distortion and refit the pose. Documented at
   [Distortion refit](https://stereopipeline.readthedocs.io/en/latest/examples/cassis.html#cassis-refit).
-- Stage 6, compute dense interest-point matches (*cassis_stereo.sh*). If matches
+- Stage 6, compute dense interest-point matches (*cassis_stereo.sh*). With
+  *denseBounded=yes* each pair, left-right or same-look, is correlated on a common
+  mapprojected window after measuring its ground shift (*cassis_pair_window.py*), with a
+  fixed ±8 px search, so a bland overlap gives few or no matches instead of false ones. If matches
   are absent, start the run at stage 6. Documented at
   [Dense matches](https://stereopipeline.readthedocs.io/en/latest/examples/cassis.html#cassis-dense-matches).
 - Stage 7: bundle adjustment, pairwise stereo, blending, and registration
