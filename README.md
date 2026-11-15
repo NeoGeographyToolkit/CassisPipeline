@@ -71,14 +71,23 @@ explicitly (see the Environment section below).
 
 ## Reference data
 
-A reference [Jezero site dataset](https://github.com/NeoGeographyToolkit/CassisPipeline/releases/tag/jezero-reference) is provided.
+Reference datasets are provided for the five example sites, one per site config
+in *config/*:
+[Jezero](https://github.com/NeoGeographyToolkit/CassisPipeline/releases/tag/jezero-reference),
+[Oxia Planum 1](https://github.com/NeoGeographyToolkit/CassisPipeline/releases/tag/ox1-reference),
+[Oxia Planum 2](https://github.com/NeoGeographyToolkit/CassisPipeline/releases/tag/ox2-reference),
+[Gusev](https://github.com/NeoGeographyToolkit/CassisPipeline/releases/tag/gusev-reference), and
+[site 004756](https://github.com/NeoGeographyToolkit/CassisPipeline/releases/tag/004756-reference).
 
-It has the site configuration, the framelet cubes, the original CSM cameras,
-the registered and distortion-corrected cameras, the CTX reference DEM, the
-coarser CTX mapprojection DEM, the preliminary CaSSIS linescan DEM aligned to
-CTX, and the final produced CaSSIS DEM with its evaluation products.
-Intermediate stereo, bundle-adjustment, and dense matches data are excluded,
-since they are large and can be regenerated.
+Each has the site and shared configurations, the framelet cubes and their CSM
+cameras, the CTX reference DEM, the coarser CTX mapprojection DEM, the
+preliminary CaSSIS linescan DEM aligned to CTX with its linescan cameras, the
+registered and distortion-corrected framelet cameras, and the final produced
+CaSSIS DEM with its evaluation products. Intermediate stereo, bundle-adjustment,
+and dense matches data are excluded, since they are large and can be
+regenerated. Running stages 6 and 7 on a dataset reproduces its expected DEM.
+
+The commands below use the Jezero dataset.
 
 Extract it in the current directory.
 
