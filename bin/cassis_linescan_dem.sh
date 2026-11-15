@@ -157,7 +157,7 @@ echo "DEM after BA+stereo (native res): $dem"; ls -la "$dem"
 
 # S5: sparse hillshade-init alignment to the coarse CTX.
 # Align the linescan stereo DEM to the coarse CTX with sparse interest points matched
-# between the two hillshades: pc_align --initial-transform-from-hillshading rigid
+# between the two hillshades: pc_align --initial-transform-from-hillshading translation
 # (RANSAC-filtered), no dense correlation and no match file. This is reliable only
 # because both DEMs are first put on the same coarse CTX grid (demc, below) before
 # matching. The old failure of hillshade-init alone ("not enough valid matches" -> a
@@ -171,7 +171,7 @@ echo "DEM after BA+stereo (native res): $dem"; ls -la "$dem"
 # low-texture ones; 10% is the uniform value that serves both). Call 2 (below) applies
 # the resulting transform to the point cloud. Judge the result by a red/green hillshade
 # overlay, not dh/dv.
-echo "S5 sparse hillshade-init align: pc_align --initial-transform-from-hillshading rigid"
+echo "S5 sparse hillshade-init align: pc_align --initial-transform-from-hillshading translation"
 al=$out/align; mkdir -p "$al"
 # 1. put the native linescan DEM on the coarse CTX grid (same proj/extent/res) so
 #    hillshades match
@@ -281,12 +281,13 @@ else
   echo "  NCC produced no shift (python scipy/osgeo import issue?) - falling through to the old methods"
 fi
 
-# method 1 (fall-through): sparse hillshade-init, rigid (no scale). Works on textured sites. Runs only if
-# NCC (method 0) did not pass the corr-eval.
+# method 1 (fall-through): sparse hillshade-init, translation only. Works on textured sites. Runs only if
+# NCC (method 0) did not pass the corr-eval. A rotation fit from sparse hillshade points over a ~30 km strip is
+# poorly determined, and a few degrees of it swing the cameras tens of km at orbit distance.
 if ! align_ok; then
-  echo "S5 METHOD 0 did not pass -> METHOD 1: sparse hillshade-init (pc_align --initial-transform-from-hillshading rigid)"
+  echo "S5 METHOD 0 did not pass -> METHOD 1: sparse hillshade-init (pc_align --initial-transform-from-hillshading translation)"
   pc_align --max-displacement -1 --num-iterations 0 --max-num-reference-points 1000000           \
-    --initial-transform-from-hillshading rigid --initial-transform-ransac-params 1000 3          \
+    --initial-transform-from-hillshading translation --initial-transform-ransac-params 1000 3          \
     --save-transformed-source-points "$cwin" "$dwin" -o "$al/run" > "$out/align_log.txt" 2>&1    \
     || { echo "  method 1 pc_align FAILED (recorded)"; tail -20 "$out/align_log.txt"; }
   grep -aE "Translation vector|magnitude of translation|Number of.*matches" "$out/align_log.txt" | sed 's/^/  /'
