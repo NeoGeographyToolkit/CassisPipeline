@@ -33,4 +33,9 @@ bundle_adjust "$Ls" "$Rs" "$sL" "$sR"                      \
   --initial-transform "$T" --apply-initial-transform-only  \
   --inline-adjustments -o "$out/run" > "$out/log.txt" 2>&1 \
   || { echo "FAILED"; tail -20 "$out/log.txt"; exit 1; }
+# A good alignment moves the linescan cameras by a few km. A wrong-lock rigid transform can rotate them
+# hundreds of km (even inside the planet) while its DEM residual still looks passable, so stop here.
+aL=$out/run-$(basename "$sL"); aR=$out/run-$(basename "$sR")
+python3 "$(dirname "$0")/cassis_check_cam_move.py" 30000 20000 "$sL" "$aL" "$sR" "$aR" \
+  || { echo "ALIGN_CAMERA_CHECK_FAIL the stage-1 alignment moves the linescan cameras implausibly far; inspect $outDir/linescan/linescan_dem/align"; exit 1; }
 echo "DONE -> $out/run-*adjusted_state.json"; ls "$out"/run-*adjusted_state.json

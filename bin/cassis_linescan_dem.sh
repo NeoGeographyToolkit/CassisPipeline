@@ -254,8 +254,9 @@ print(f"{md(sys.argv[1]):.2f} {md(sys.argv[2]):.2f}")
 PYG
 )
 }
-# helper: is the current residual a pass? |median| <= 10 px for both dh and dv.
-align_ok() { awk -v h="${GDH:-999}" -v v="${GDV:-999}" 'BEGIN{h=(h<0?-h:h);v=(v<0?-v:v);exit (h>10||v>10)?1:0}'; }
+# helper: is the current residual a pass? |median| <= 5 px for both dh and dv (good sites are within ~4 px;
+# a wrong lock can still leave ~10 px).
+align_ok() { awk -v h="${GDH:-999}" -v v="${GDV:-999}" 'BEGIN{h=(h<0?-h:h);v=(v<0?-v:v);exit (h>5||v>5)?1:0}'; }
 
 # method 0 (PRIMARY, robust): NCC global hillshade correlation. A full-search template match of the
 # linescan hillshade over the CTX hillshade gives the rigid shift directly. Unlike ICP-from-scratch
@@ -357,7 +358,7 @@ if [ -s "$al/aligned_oncoarse.tif" ]; then
   echo "ALIGNED DEM (native): $al/aligned-DEM.tif ; on coarse grid: $al/aligned_oncoarse.tif"
   echo "  ALIGN METHOD USED: $method ; final residual dh/dv median = ${GDH} / ${GDV} px"
   echo "  RED/GREEN OVERLAY (the align judge): $al/align_overlay.tif (R=CTX G=aligned, yellow=registered)"
-  align_ok || echo "  WARNING: linescan->CTX ALIGNMENT residual dh/dv median > 10 px after all methods. Inspect $al/align_overlay.tif (R=CTX, G=aligned) by eye."
+  align_ok || echo "  WARNING: linescan->CTX ALIGNMENT residual dh/dv median > 5 px after all methods. Inspect $al/align_overlay.tif (R=CTX, G=aligned) by eye."
 else
   echo "NO aligned DEM produced - all align methods failed (see $out/align_*.txt)"
 fi
