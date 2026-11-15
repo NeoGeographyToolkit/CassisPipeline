@@ -27,7 +27,7 @@ inputCassisDir=${22:?inputCassisDir (holds the two looks cubs)}; B=${23:?B (cd t
 cd "$B" || { echo "ERROR cannot cd $B"; exit 1; }
 # ASP/ISIS tools on PATH and environment are set up by the caller. See the README.
 source cassis_env_check.sh   # sid-based cub finders (cassis_cub_for_stem)
-log=$B/output_${outTag}_pass.txt; exec > "$log" 2>&1
+log=$B/output_$(basename "$outDir")_${outTag}_pass.txt; exec > "$log" 2>&1
 echo "[cassis_pass] START $(date) host=$(uname -n) outTag=$outTag"
 echo "  outDir=$outDir startCamDir=$startCamDir linescanDem=$linescanDem"
 echo "  mapprojRes=$mapprojRes demRes=$demRes corrRes=$corrRes corrSearch=$corrSearch"

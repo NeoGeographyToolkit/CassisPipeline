@@ -25,7 +25,7 @@ maxDisp=${20:?maxDisp}; geounc=${21:?geounc}; outTag=${22:?outTag}
 tocGcpMode=${23:?tocGcpMode (no_gcp|soft_gcp)}; B=${24:?B (cd target, LAST)}
 cd "$B" || { echo "ERROR cannot cd $B"; exit 1; }
 # ASP/ISIS tools on PATH and environment are set up by the caller. See the README.
-log=$B/output_${outTag}_block.txt; exec > "$log" 2>&1
+log=$B/output_$(basename "$outDir")_${outTag}_block.txt; exec > "$log" 2>&1
 echo "[cassis_block] START $(date) host=$(uname -n) outTag=$outTag (builds on $inImgList)"
 echo "  inGcp=$inGcp mapprojRes=$mapprojRes demRes=$demRes corrRes=$corrRes htUncLoose=$htUncLoose htUncTight=$htUncTight"
 for f in "$inImgList" "$inCamList" "$inGcp" "$refDem" "$mapprojDem"; do [ -s "$f" ] || { echo "ERROR missing $f"; exit 1; }; done

@@ -26,7 +26,7 @@ gcpRobust=${gcpRobust:-1}
 # ASP/ISIS tools on PATH and environment are set up by the caller. See the README.
 cd "$B" || { echo "ERROR cannot cd $B"; exit 1; }
 out=$outDir/frame/$outTag; mkdir -p "$out"
-log=$B/output_${outTag}.txt; exec > "$log" 2>&1
+log=$B/output_$(basename "$outDir")_${outTag}.txt; exec > "$log" 2>&1
 echo "[cassis_ba] START $(date) host=$(uname -n) outTag=$outTag"
 
 # Input lists are params (no hardcoded cameras/site). Validate: exist + 1-1 by count.

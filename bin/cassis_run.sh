@@ -76,7 +76,7 @@ if [ "$stage" = pass1 ]; then
   echo "pass1 outTag=$outTag $(date)"
   bash cassis_pass.sh "$outDir" "$startCamDir" "$linescanDem" "$refDem" "$mapprojDem" "$matchpfx" "$Llook" "$Rlook" \
     "$mapprojRes" "$demRes" "$corrRes" "$corrSearch" "$htUncLoose" "$htUncTight" "$camPosUnc" "$robust" "$gcpSigma" \
-    "$maxGcp" "$maxDisp" "$geounc" "$outTag" "$inputCassisDir" "$B" || { echo "PASS1_FAIL (see output_${outTag}_pass.txt)"; exit 1; }
+    "$maxGcp" "$maxDisp" "$geounc" "$outTag" "$inputCassisDir" "$B" || { echo "PASS1_FAIL (see output_$(basename "$outDir")_${outTag}_pass.txt)"; exit 1; }
 elif [ "$stage" = pass2 ]; then
   p1Tag=pass1; outTag=pass2
   P1IMG=$outDir/frame/${p1Tag}/run-image_list.txt
@@ -86,7 +86,7 @@ elif [ "$stage" = pass2 ]; then
   echo "pass2 outTag=$outTag (builds on $p1Tag: img=$(wc -l <"$P1IMG") cam=$(wc -l <"$P1CAM") gcp=$(grep -vc '^#' "$P1GCP")) $(date)"
   bash cassis_block.sh "$outDir" "$P1IMG" "$P1CAM" "$P1GCP" "$refDem" "$mapprojDem" "$matchpfx" "$Llook" "$Rlook" \
     "$mapprojRes" "$demRes" "$corrRes" "$corrSearch" "$htUncLoose" "$htUncTight" "$camPosUnc" "$robust" "$gcpSigma" \
-    "$maxGcp" "$maxDisp" "$geounc" "$outTag" "$pass2Gcp" "$B" || { echo "PASS2_FAIL (see output_${outTag}_block.txt)"; exit 1; }
+    "$maxGcp" "$maxDisp" "$geounc" "$outTag" "$pass2Gcp" "$B" || { echo "PASS2_FAIL (see output_$(basename "$outDir")_${outTag}_block.txt)"; exit 1; }
 else
   echo "ERROR unknown stage '$stage' (want pass1|pass2)"; exit 1
 fi
