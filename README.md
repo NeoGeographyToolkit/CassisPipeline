@@ -459,8 +459,7 @@ Check that a frame camera was written per framelet. Documented at
 ### Stage 4, refit the lens distortion
 
 Refits a single optimized and fixed transverse-distortion model and sets it on
-the cameras. With the default *refitBeforeLinescan=yes* this refit already
-happened before stage 1, so this stage only gathers the refit cameras.
+the cameras.
 
 Example for the Jezero site (both looks in one call):
 
