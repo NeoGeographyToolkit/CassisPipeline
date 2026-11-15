@@ -21,8 +21,10 @@ intrFloat=${12:?intrFloat (yes_intr_float|no_intr_float)}; B=${13:?B (cd target,
 # their defaults ONCE here, up front, so the use sites below read a plain variable:
 #   htdemRobust - heights-from-dem robust threshold (default 1000000, effectively off)
 #   gcpRobust   - robust cost on the floated-GCP residuals (default 1; "no" = off)
+#   baMaxPairMatches - matches kept per image pair (default 2000)
 htdemRobust=${htdemRobust:-1000000}
 gcpRobust=${gcpRobust:-1}
+baMaxPairMatches=${baMaxPairMatches:-2000}
 # ASP/ISIS tools on PATH and environment are set up by the caller. See the README.
 cd "$B" || { echo "ERROR cannot cd $B"; exit 1; }
 out=$outDir/frame/$outTag; mkdir -p "$out"
@@ -84,7 +86,7 @@ bundle_adjust                                        \
   --remove-outliers-params "75 3 100 100"            \
   --min-triangulation-angle 1e-10                    \
   --forced-triangulation-distance 392000             \
-  --max-pairwise-matches "${baMaxPairMatches:-2000}" \
+  --max-pairwise-matches "$baMaxPairMatches"         \
   -o "$out/run"                                      \
   || { echo "BA FAILED - tail:"; tail -25 "$out"/*log*bundle_adjust*.txt 2>/dev/null; exit 1; }
 echo "BA done. output cams: $(ls "$out"/run-*.adjusted_state.json 2>/dev/null | wc -l) ($(date))"
