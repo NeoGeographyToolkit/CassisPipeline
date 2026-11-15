@@ -126,10 +126,11 @@ if [ -s "$Lc" ] && [ -s "$Rc" ]; then
   echo "S3 BA states present, skip"
 else
   echo "S3 bundle_adjust --inline-adjustments (tie L+R linescan)"
-  # The camera position uncertainty fixes the gauge: with only L-R ties the pair slides km along the view
-  # direction from run to run, which changes the ground scale that the translation-only CTX align cannot undo.
+  # With only L-R ties the pair can rotate and slide as a rigid body at no cost. That tilts and rescales the
+  # ground, which the translation-only CTX align cannot undo. Fixing L and bounding the positions removes it.
   bundle_adjust "$Ls" "$Rs" "$Lcam" "$Rcam" --inline-adjustments --datum D_MARS \
     --ip-detect-method 1 --ip-per-image 50000 --threads 6                       \
+    --fixed-camera-indices 0                                                    \
     --camera-position-uncertainty "${lsPosUnc:-100,100}"                        \
     --remove-outliers-params "75 100 50 50"                                     \
     --num-iterations 100 --robust-threshold 2                                   \
