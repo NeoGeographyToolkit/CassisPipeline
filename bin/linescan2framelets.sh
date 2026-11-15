@@ -62,16 +62,23 @@ PY
     basedir=$outDir/frame/refit_frame_cams_prelink
     echo "[aligned_framelets $look $sid] refitBeforeLinescan=yes: pose-swap TRANSVERSE refit frame cams"
     ls "$basedir"/*-${sid}-*-0__4_0.json >/dev/null 2>&1 || { echo "ERROR missing refit frame cams under $basedir (run the stage-1 reorder first)"; exit 1; }
-    python3 - "$state" "$out" "$sid" "$basedir" <<'PY'
+    # Inverse of linescan_refit_lens.py: node j was built as its own position plus framelet j's refit
+    # change, so framelet j = its refit pose moved by what the linescan BA and CTX alignment did to node j.
+    pre=$outDir/linescan/linescan_dem/refit_ls/${sid}_linescan.json
+    [ -s "$pre" ] || { echo "ERROR missing the injected refit linescan state $pre"; exit 1; }
+    python3 - "$state" "$out" "$sid" "$basedir" "$pre" <<'PY'
 import json, glob, re, sys
-state_file, out, sid, basedir = sys.argv[1:5]
+state_file, out, sid, basedir, pre_file = sys.argv[1:6]
 def load(f):
     t=open(f).read()
     try: return json.loads(t), False
     except: return json.loads(t.split('\n',1)[1]), True
 ln,_ = load(state_file)
 pos = ln['m_positions']; quat = ln['m_quaternions']
+pre = load(pre_file)[0]['m_positions']
 nnodes = len(pos)//3
+if len(pre) != len(pos):
+    sys.exit(f"ERROR node count differs between {state_file} and {pre_file}")
 cams = glob.glob(f'{basedir}/*-{sid}-*-0__4_0.json')
 cams = [c for c in cams if not c.endswith('.adjusted_state.json') and not c.endswith('.camgen.log')]
 idxof = lambda f: int(re.search(rf'-{sid}-(\d+)-0__4_0', f).group(1))
@@ -81,8 +88,10 @@ for j, cf in enumerate(cams):
     if j >= nnodes:
         print(f"  WARN more refit cams ({len(cams)}) than nodes ({nnodes}); extra ignored"); break
     st, hashdr = load(cf)
-    st['m_currentParameterValue'][0:3] = pos[3*j:3*j+3]
-    st['m_currentParameterValue'][3:7] = quat[4*j:4*j+4]
+    cv = st['m_currentParameterValue']
+    for k in range(3):
+        cv[k] += pos[3*j+k] - pre[3*j+k]
+    cv[3:7] = quat[4*j:4*j+4]
     stem = re.sub(r'\.json$', '', cf.split('/')[-1])
     aligned = f'{out}/aligned-{stem}.json'
     with open(aligned, 'w') as f:
