@@ -84,7 +84,7 @@ bundle_adjust                                        \
   --remove-outliers-params "75 3 100 100"            \
   --min-triangulation-angle 1e-10                    \
   --forced-triangulation-distance 392000             \
-  --max-pairwise-matches 2000                        \
+  --max-pairwise-matches "${baMaxPairMatches:-2000}" \
   -o "$out/run"                                      \
   || { echo "BA FAILED - tail:"; tail -25 "$out"/*log*bundle_adjust*.txt 2>/dev/null; exit 1; }
 echo "BA done. output cams: $(ls "$out"/run-*.adjusted_state.json 2>/dev/null | wc -l) ($(date))"

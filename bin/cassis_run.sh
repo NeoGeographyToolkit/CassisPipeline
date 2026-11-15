@@ -46,6 +46,8 @@ export ticNoGcp=${ticNoGcp:-no}
 # Heights-from-dem robust threshold (cassis_ba.sh), default 1000000 = effectively off (the production
 # recipe), so the CTX heights-from-dem hold low-texture terrain instead of being robust-rejected there.
 export htdemRobust=${htdemRobust:-1000000}
+# baMaxPairMatches (cassis_ba.sh): matches kept per image pair in the stage-7 bundle adjustments. Exported for the child.
+export baMaxPairMatches=${baMaxPairMatches:-2000}
 # demSeed=yes (cassis_stereo.sh DEM mode, on in cassis_common.conf): seed the per-pair stereo from refDem
 # (--corr-seed-mode 2, error demSeedErr m). Unset = no. Exported for the child.
 export demSeed=${demSeed:-no} demSeedErr=${demSeedErr:-20}
